@@ -1,98 +1,111 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { router } from "expo-router";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Colors } from "../../constants/theme";
+import { useAppTheme } from "../../context/ThemeContext";
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const { theme } = useAppTheme();
+  const isDark = theme === "dark";
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  return (
+    <View style={[styles.container, isDark && styles.containerDark]}>
+      <Text style={[styles.title, isDark && styles.textDark]}>
+        Welcome, Hari!
+      </Text>
+      <Text style={[styles.subtitle, isDark && styles.textMutedDark]}>
+        Navigate to any section:
+      </Text>
+
+      <View style={styles.buttonContainer}>
+        <Pressable
+          style={[styles.button, isDark && styles.buttonDark]}
+          onPress={() => router.push("/profile")}
+        >
+          <Text style={[styles.buttonText, isDark && styles.textDark]}>
+            👤 Profile
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.button, isDark && styles.buttonDark]}
+          onPress={() => router.push("/chat")}
+        >
+          <Text style={[styles.buttonText, isDark && styles.textDark]}>
+            💬 Chat
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.button, isDark && styles.buttonDark]}
+          onPress={() => router.push("/calls")}
+        >
+          <Text style={[styles.buttonText, isDark && styles.textDark]}>
+            📞 Calls
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.button, isDark && styles.buttonDark]}
+          onPress={() => router.push("/settings")}
+        >
+          <Text style={[styles.buttonText, isDark && styles.textDark]}>
+            ⚙️ Settings
+          </Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: Colors.light.primary,
+    padding: 20,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  containerDark: {
+    backgroundColor: "#000000",
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  title: {
+    fontSize: 32,
+    fontWeight: "bold",
+    color: "#ffffff",
+    marginBottom: 10,
+  },
+  subtitle: {
+    fontSize: 18,
+    color: "#ffffff",
+    marginBottom: 40,
+    opacity: 0.9,
+  },
+  textDark: {
+    color: "#ffffff",
+  },
+  textMutedDark: {
+    color: "#8e8e93",
+  },
+  buttonContainer: {
+    width: "100%",
+    maxWidth: 300,
+    gap: 15,
+  },
+  button: {
+    padding: 18,
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    alignItems: "center",
+    boxShadow: "0 2 3.84 rgba(0, 0, 0, 0.25)",
+    elevation: 5,
+  },
+  buttonDark: {
+    backgroundColor: "#1c1c1e",
+    boxShadow: "0 2 3.84 rgba(0, 0, 0, 0.5)",
+  },
+  buttonText: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: Colors.light.primary,
   },
 });
