@@ -1,6 +1,10 @@
 import { initializeApp } from "@firebase/app";
 import { getAuth } from "@firebase/auth";
-import { getFirestore } from "@firebase/firestore";
+import { 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentSingleTabManager 
+} from "@firebase/firestore";
 import { getStorage } from "@firebase/storage";
 import "react-native-get-random-values";
 
@@ -18,10 +22,15 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Analytics is not supported on native via the JS SDK (needs react-native-firebase)
-export const analytics = null;
+// Initialize Firestore with Offline Persistence
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentSingleTabManager({})
+  })
+});
+
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+export { db };
 export const storage = getStorage(app);
 
 export default app;

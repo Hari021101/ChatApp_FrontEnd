@@ -1,27 +1,27 @@
 import { Ionicons } from "@expo/vector-icons";
 import {
-  GoogleAuthProvider,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  updateProfile,
+    GoogleAuthProvider,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    signInWithPopup,
+    updateProfile,
 } from "@firebase/auth";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Dimensions,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Dimensions,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from "react-native";
 import { auth } from "../config/firebase";
 
@@ -446,11 +446,9 @@ const styles = StyleSheet.create({
     color: "#fff",
     lineHeight: SCREEN_WIDTH > 500 ? 64 : 48,
     letterSpacing: -2,
-    // Using modern textShadow format
-    textShadowColor: "rgba(99, 102, 241, 0.5)",
-    textShadowOffset: { width: 0, height: 10 },
-    textShadowRadius: 20,
-  },
+    // Modern textShadow standard
+    textShadow: "0 10px 20px rgba(99, 102, 241, 0.5)",
+  } as any,
   subtitle: {
     fontSize: 12,
     color: "rgba(255,255,255,0.6)",
@@ -475,11 +473,8 @@ const styles = StyleSheet.create({
   },
   inputWrapperFocused: {
     backgroundColor: "rgba(255, 255, 255, 0.2)",
-    // Reverting to standard shadow props for better compatibility
-    shadowColor: "#fff",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
+    // Using modern boxShadow standard for web/native compatibility
+    boxShadow: "0 0 20px rgba(255, 255, 255, 0.3)",
     elevation: 20,
   },
   iconContainer: {

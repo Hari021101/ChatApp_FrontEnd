@@ -1,107 +1,136 @@
 import { router } from "expo-router";
-import { useState } from "react";
 import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    collection,
+    doc,
+    getDoc,
+    onSnapshot,
+    orderBy,
+    query,
+    where,
+} from "firebase/firestore";
+import { useEffect, useState } from "react";
+import {
+    ActivityIndicator,
+    FlatList,
+    Pressable,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
+import SearchUsers from "../components/SearchUsers";
+import { auth, db } from "../config/firebase";
 import { Colors } from "../constants/theme";
 import { useAppTheme } from "../context/ThemeContext";
 
-// Mock chat data
 type Chat = {
   id: string;
   name: string;
   avatar: string;
   lastMessage: string;
-  timestamp: string;
+  timestamp: any;
   unread: number;
   online: boolean;
+  participants: string[];
+  isGroup?: boolean;
 };
-
-const chatData: Chat[] = [
-  {
-    id: "1",
-    name: "Priya Kumar",
-    avatar: "P",
-    lastMessage: "Hey! Are we meeting tomorrow?",
-    timestamp: "2m ago",
-    unread: 2,
-    online: true,
-  },
-  {
-    id: "2",
-    name: "Rahul Sharma",
-    avatar: "R",
-    lastMessage: "Thanks for the help!",
-    timestamp: "1h ago",
-    unread: 0,
-    online: true,
-  },
-  {
-    id: "3",
-    name: "Anjali Patel",
-    avatar: "A",
-    lastMessage: "Can you send me the files?",
-    timestamp: "3h ago",
-    unread: 5,
-    online: false,
-  },
-  {
-    id: "4",
-    name: "Dev Team",
-    avatar: "D",
-    lastMessage: "Meeting at 3 PM today",
-    timestamp: "5h ago",
-    unread: 0,
-    online: false,
-  },
-  {
-    id: "5",
-    name: "Neha Singh",
-    avatar: "N",
-    lastMessage: "See you tomorrow! 👋",
-    timestamp: "Yesterday",
-    unread: 0,
-    online: false,
-  },
-  {
-    id: "6",
-    name: "Vikram Reddy",
-    avatar: "V",
-    lastMessage: "Great presentation today!",
-    timestamp: "Yesterday",
-    unread: 1,
-    online: true,
-  },
-  {
-    id: "7",
-    name: "Family Group",
-    avatar: "F",
-    lastMessage: "Mom: Dinner plans?",
-    timestamp: "2 days ago",
-    unread: 0,
-    online: false,
-  },
-];
 
 export default function ChatScreen() {
   const { theme } = useAppTheme();
   const isDark = theme === "dark";
-  const [chats, setChats] = useState(chatData);
+  const user = auth.currentUser;
+
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const [isConnected, setIsConnected] = useState(true);
+
+  useEffect(() => {
+    const unsubscribeConnection = onSnapshot(doc(db, ".info/connected"), (snapshot) => {
+      setIsConnected(snapshot.data()?.connected ?? true);
+    });
+    return () => unsubscribeConnection();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    // Listen to chats where the current user is a participant
+    const q = query(
+      collection(db, "chats"),
+      where("participants", "array-contains", user.uid),
+      orderBy("updatedAt", "desc"),
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const chatPromises = snapshot.docs.map(async (chatDoc) => {
+          const data = chatDoc.data();
+          const isGroup = data.isGroup || false;
+          let chatName = "Chat";
+          let chatAvatar = "C";
+          let isOnline = false;
+
+          if (isGroup) {
+            chatName = data.groupName || "Group";
+            chatAvatar = chatName.charAt(0).toUpperCase();
+            // Optional: You could count online members here, but for now we'll leave it false
+          } else {
+            const otherId = data.participants.find(
+              (p: string) => p !== user.uid,
+            );
+            chatName = data.participantNames?.[otherId] || "Chat";
+            chatAvatar = chatName.charAt(0).toUpperCase();
+
+            if (otherId) {
+              const userSnap = await getDoc(doc(db, "users", otherId));
+              if (userSnap.exists()) {
+                const userData = userSnap.data() as { isOnline?: boolean };
+                isOnline = userData.isOnline || false;
+              }
+            }
+          }
+
+          return {
+            id: chatDoc.id,
+            name: chatName,
+            avatar: chatAvatar,
+            isGroup,
+            lastMessage: data.lastMessage || "",
+            timestamp: data.updatedAt
+              ? data.updatedAt.toDate().toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "...",
+            unread: data.unreadCounts?.[user.uid] || 0,
+            online: isOnline,
+            participants: data.participants,
+          } as Chat;
+        });
+
+        Promise.all(chatPromises).then((chatList) => {
+          setChats(chatList);
+          setLoading(false);
+        });
+      },
+      (error) => {
+        console.error("Error fetching chats:", error);
+        setLoading(false);
+      },
+    );
+
+    return () => unsubscribe();
+  }, [user]);
 
   const filteredChats = chats.filter((chat) =>
     chat.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   const handleChatPress = (chat: Chat) => {
-    // Mark as read
-    setChats(chats.map((c) => (c.id === chat.id ? { ...c, unread: 0 } : c)));
-    // Navigate to conversation
     router.push(
       `/conversation/${chat.id}?name=${encodeURIComponent(chat.name)}`,
     );
@@ -114,10 +143,16 @@ export default function ChatScreen() {
       android_ripple={{ color: isDark ? "#333" : "#e0e0e0" }}
     >
       <View style={styles.avatarContainer}>
-        <View style={[styles.avatar, isDark && styles.avatarDark]}>
+        <View
+          style={[
+            styles.avatar,
+            item.isGroup && { backgroundColor: "#FF9500" },
+            isDark && styles.avatarDark,
+          ]}
+        >
           <Text style={styles.avatarText}>{item.avatar}</Text>
         </View>
-        {item.online && (
+        {item.online && !item.isGroup && (
           <View
             style={[
               styles.onlineIndicator,
@@ -158,13 +193,40 @@ export default function ChatScreen() {
     </Pressable>
   );
 
+  if (loading) {
+    return (
+      <View
+        style={[
+          styles.container,
+          isDark && styles.containerDark,
+          styles.centered,
+        ]}
+      >
+        <ActivityIndicator size="large" color={Colors.light.primary} />
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
+      {!isConnected && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineText}>Waiting for network... 🔄</Text>
+        </View>
+      )}
       {/* Header */}
       <View style={[styles.header, isDark && styles.headerDark]}>
-        <Text style={[styles.headerTitle, isDark && styles.textDark]}>
-          Chats
-        </Text>
+        <View style={styles.headerTop}>
+          <Text style={[styles.headerTitle, isDark && styles.textDark]}>
+            Chats
+          </Text>
+          <TouchableOpacity
+            style={styles.addChatBtn}
+            onPress={() => setShowSearch(true)}
+          >
+            <Text style={styles.addChatIcon}>+</Text>
+          </TouchableOpacity>
+        </View>
         <View
           style={[styles.searchContainer, isDark && styles.searchContainerDark]}
         >
@@ -196,6 +258,19 @@ export default function ChatScreen() {
           </View>
         )}
       />
+
+      <SearchUsers
+        visible={showSearch}
+        onClose={() => setShowSearch(false)}
+        onChatCreated={(chatId: string, otherUserName: string) => {
+          router.push(
+            `/conversation/${chatId}?name=${encodeURIComponent(otherUserName)}`,
+          );
+        }}
+        currentUserId={user?.uid || ""}
+        currentUserName={user?.displayName || "User"}
+        isDark={isDark}
+      />
     </View>
   );
 }
@@ -207,6 +282,10 @@ const styles = StyleSheet.create({
   },
   containerDark: {
     backgroundColor: "#000000",
+  },
+  centered: {
+    justifyContent: "center",
+    alignItems: "center",
   },
   header: {
     backgroundColor: Colors.light.primary,
@@ -221,7 +300,26 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: "bold",
     color: "#ffffff",
+  },
+  headerTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 15,
+  },
+  addChatBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  addChatIcon: {
+    fontSize: 28,
+    color: "#ffffff",
+    fontWeight: "300",
+    lineHeight: 32,
   },
   searchContainer: {
     flexDirection: "row",
@@ -362,5 +460,15 @@ const styles = StyleSheet.create({
   },
   textMutedDark: {
     color: "#8e8e93",
+  },
+  offlineBanner: {
+    backgroundColor: "#FF9500",
+    paddingVertical: 5,
+    alignItems: "center",
+  },
+  offlineText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "500",
   },
 });

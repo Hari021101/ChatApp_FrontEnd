@@ -8,11 +8,20 @@ import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 
 import { onAuthStateChanged, User } from "@firebase/auth";
-import { router } from "expo-router";
+import { router, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
 import "../config/firebase";
 import { auth } from "../config/firebase";
 import { ThemeProvider, useAppTheme } from "../context/ThemeContext";
+import { 
+  registerForPushNotificationsAsync, 
+  savePushTokenToFirestore 
+} from "../utils/notifications";
+import * as Notifications from "expo-notifications";
+import { useRef } from "react";
+import { Platform } from "react-native";
+
+import { setupPresenceListener } from "../utils/presence";
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -22,6 +31,9 @@ function RootLayoutContent() {
   const { theme } = useAppTheme();
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  
+  const notificationListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener = useRef<Notifications.Subscription | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -32,14 +44,51 @@ function RootLayoutContent() {
   }, []);
 
   useEffect(() => {
+    if (user) {
+      const cleanup = setupPresenceListener(user.uid);
+      
+      // Register for push notifications
+      registerForPushNotificationsAsync().then(token => {
+        if (token) savePushTokenToFirestore(token);
+      });
+
+      // Background/Terminated notification listener
+      if (Platform.OS !== "web") {
+        notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+          console.log("Notification Received:", notification);
+        });
+
+        // Notification click listener
+        responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+          const { id, type } = response.notification.request.content.data;
+          if (id && type === "chat") {
+            router.push(`/conversation/${id}`);
+          }
+        });
+      }
+
+      return () => {
+        if (cleanup) cleanup();
+        if (notificationListener.current) notificationListener.current.remove();
+        if (responseListener.current) responseListener.current.remove();
+      };
+    }
+  }, [user]);
+
+  const segments = useSegments();
+
+  useEffect(() => {
     if (!initializing) {
-      if (user) {
+      const inTabs = segments[0] === "(tabs)";
+      const inLogin = segments[0] === "login";
+
+      if (user && !inTabs) {
         router.replace("/(tabs)");
-      } else {
+      } else if (!user && !inLogin) {
         router.replace("/login");
       }
     }
-  }, [user, initializing]);
+  }, [user, initializing, segments]);
 
   if (initializing) return null;
 

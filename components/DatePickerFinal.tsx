@@ -10,7 +10,7 @@ import {
     Text,
     TextStyle,
     View,
-    ViewStyle
+    ViewStyle,
 } from "react-native";
 import { Colors } from "../constants/theme";
 
@@ -28,7 +28,14 @@ interface Props {
   isDark: boolean;
 }
 
-const { width: windowWidth, height: windowHeight } = Dimensions.get("window");
+// Safe dimension extraction
+const getDimensions = () => {
+  try {
+    return Dimensions.get("window");
+  } catch {
+    return { width: 0, height: 0 };
+  }
+};
 
 const MONTHS = [
   "January",
@@ -55,10 +62,11 @@ export default function DatePickerFinal({
   isDark,
 }: Props) {
   // Parsing initial date
-  const initialDate = useMemo(
-    () => (value ? new Date(value) : new Date()),
-    [value],
-  );
+  const initialDate = useMemo(() => {
+    if (!value) return new Date();
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? new Date() : d;
+  }, [value]);
 
   const [viewDate, setViewDate] = useState(new Date(initialDate));
   const [showYearPicker, setShowYearPicker] = useState(false);
@@ -341,8 +349,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    width: windowWidth,
-    height: windowHeight,
     zIndex: 9999999,
     justifyContent: "center",
     alignItems: "center",

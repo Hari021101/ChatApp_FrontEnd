@@ -5,19 +5,20 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Image,
-  Keyboard,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    Keyboard,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from "react-native";
+import { uploadFile } from "../utils/storage";
 import DatePickerFinal from "../components/DatePickerFinal";
 import { auth, db } from "../config/firebase";
 import { Colors } from "../constants/theme";
@@ -148,13 +149,17 @@ export default function ProfileScreen() {
         `profile_image_${user.uid}`,
       );
 
-      setUserData((prev) => ({
-        ...prev,
-        ...firestoreData,
-        profileImage: storedImage || user.photoURL || null,
-        name: user.displayName || (firestoreData as any).name || "",
-        email: user.email || "",
-      }));
+      setUserData((prev) => {
+        const fireData = firestoreData as any;
+        return {
+          ...prev,
+          ...fireData,
+          profileImage:
+            fireData.profileImage || storedImage || user.photoURL || null,
+          name: user.displayName || fireData.name || "",
+          email: user.email || "",
+        };
+      });
 
       // Try to extract country code from phone if exists
       if ((firestoreData as any).phone) {
@@ -180,27 +185,34 @@ export default function ProfileScreen() {
     }
 
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: "images",
+      mediaTypes: (ImagePicker as any).MediaType.Images,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.5,
     });
 
     if (!result.canceled) {
+      setSaving(true);
       const uri = result.assets[0].uri;
-      setUserData({ ...userData, profileImage: uri });
+      const uploadPath = `profiles/${user.uid}.jpg`;
+      const downloadURL = await uploadFile(uri, uploadPath);
 
-      try {
-        // Save to Auth
-        await updateProfile(user, { photoURL: uri });
-        // Save to AsyncStorage
-        await AsyncStorage.setItem(`profile_image_${user.uid}`, uri);
-        // Save to Firestore
-        const docRef = doc(db, "users", user.uid);
-        await setDoc(docRef, { profileImage: uri }, { merge: true });
-      } catch (error) {
-        console.error("Error saving image:", error);
+      if (downloadURL) {
+        setUserData({ ...userData, profileImage: downloadURL });
+
+        try {
+          // Save to Auth
+          await updateProfile(user, { photoURL: downloadURL });
+          // Save to AsyncStorage
+          await AsyncStorage.setItem(`profile_image_${user.uid}`, downloadURL);
+          // Save to Firestore
+          const docRef = doc(db, "users", user.uid);
+          await setDoc(docRef, { profileImage: downloadURL }, { merge: true });
+        } catch (error) {
+          console.error("Error saving image:", error);
+        }
       }
+      setSaving(false);
     }
   };
 
