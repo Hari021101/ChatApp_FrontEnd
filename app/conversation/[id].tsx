@@ -30,6 +30,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import * as WebBrowser from "expo-web-browser";
 import { auth, db } from "../../config/firebase";
 import { Colors } from "../../constants/theme";
 import { useAppTheme } from "../../context/ThemeContext";
@@ -83,14 +84,8 @@ export default function ConversationScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
-
-  useEffect(() => {
-    // Listen to Firestore connection state
-    const unsubscribeConnection = onSnapshot(doc(db, ".info/connected"), (snapshot) => {
-      setIsConnected(snapshot.data()?.connected ?? true);
-    });
-    return () => unsubscribeConnection();
-  }, []);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id || !user) return;
@@ -148,9 +143,15 @@ export default function ConversationScreen() {
       orderBy("timestamp", "asc"),
     );
 
+    // Safety timeout to prevent infinite loading if Firestore lags
+    const loadingTimeout = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
+
     const unsubscribeMessages = onSnapshot(
       q,
       (snapshot) => {
+        clearTimeout(loadingTimeout);
         const msgList = snapshot.docs.map((doc) => {
           const data = doc.data();
           const isMine = data.senderId === user.uid;
@@ -190,8 +191,11 @@ export default function ConversationScreen() {
       unsubscribeUser();
       unsubscribeMessages();
       if (typingTimeout) clearTimeout(typingTimeout);
+      if (sound) {
+        sound.unloadAsync();
+      }
     };
-  }, [id, user]);
+  }, [id, user, sound]);
 
   const formatLastSeen = (timestamp: any) => {
     if (!timestamp) return "Offline";
@@ -208,6 +212,8 @@ export default function ConversationScreen() {
   const handlePickMedia = async (type: "video" | "document") => {
     if (!user || !id) return;
     setShowAttachmentMenu(false);
+    // Force close any other state that might block interaction
+    setIsRecording(false);
 
     try {
       let result: any;
@@ -285,18 +291,36 @@ export default function ConversationScreen() {
 
       if (uri) {
         setLoading(true);
-        const uploadPath = `chats/${id}/${Date.now()}.m4a`;
-        const downloadURL = await uploadFile(uri, uploadPath);
-        if (downloadURL) {
-          await addDoc(collection(db, "chats", id, "messages"), {
-            mediaUrl: downloadURL,
-            type: "audio",
-            senderId: user?.uid,
-            senderName: user?.displayName || "User",
-            timestamp: serverTimestamp(),
-            read: false,
-          });
-          // Update chat doc... similar to image/video
+        try {
+          const downloadURL = await uploadFile(uri);
+          if (downloadURL) {
+            await addDoc(collection(db, "chats", id, "messages"), {
+              mediaUrl: downloadURL,
+              type: "audio",
+              senderId: user?.uid,
+              senderName: user?.displayName || "User",
+              timestamp: serverTimestamp(),
+              read: false,
+            });
+
+            const chatRef = doc(db, "chats", id);
+            const chatSnap = await getDoc(chatRef);
+            const updates: any = {
+              lastMessage: "🎤 Voice note",
+              updatedAt: serverTimestamp(),
+            };
+
+            if (chatSnap.exists()) {
+              chatSnap.data().participants.forEach((p: string) => {
+                if (p !== user?.uid) {
+                  updates[`unreadCounts.${p}`] = increment(1);
+                }
+              });
+            }
+            await updateDoc(chatRef, updates);
+          }
+        } catch (error) {
+          console.error("Error sending voice note:", error);
         }
         setLoading(false);
       }
@@ -311,6 +335,7 @@ export default function ConversationScreen() {
 
   const handlePickImage = async () => {
     if (!user || !id) return;
+    setShowAttachmentMenu(false);
 
     try {
       const { status } =
@@ -489,6 +514,42 @@ export default function ConversationScreen() {
     setNewMessage("");
   };
 
+  const handlePlayAudio = async (messageId: string, url: string) => {
+    try {
+      if (playingAudioId === messageId && sound) {
+        await sound.pauseAsync();
+        setPlayingAudioId(null);
+        return;
+      }
+
+      if (sound) {
+        await sound.unloadAsync();
+      }
+
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: url },
+        { shouldPlay: true },
+        (status: any) => {
+          if (status.didJustFinish) {
+            setPlayingAudioId(null);
+          }
+        },
+      );
+      setSound(newSound);
+      setPlayingAudioId(messageId);
+    } catch (error) {
+      console.error("Error playing audio:", error);
+    }
+  };
+
+  const handleOpenFile = async (url: string) => {
+    try {
+      await WebBrowser.openBrowserAsync(url);
+    } catch (error) {
+      console.error("Error opening file:", error);
+    }
+  };
+
   const renderMessage = ({ item }: { item: Message }) => {
     const isMine = item.isMine;
 
@@ -524,23 +585,34 @@ export default function ConversationScreen() {
           )}
 
           {item.type === "audio" && (
-            <View style={styles.audioContainer}>
+            <Pressable
+              onPress={() => handlePlayAudio(item.id, item.mediaUrl || "")}
+              style={styles.audioContainer}
+            >
               <Ionicons
-                name="play-circle" // Should be dynamic based on playing state
+                name={playingAudioId === item.id ? "pause-circle" : "play-circle"}
                 size={36}
                 color={isMine ? "#fff" : Colors.light.primary}
               />
               <View style={styles.audioWaveform}>
-                <View style={[styles.audioProgress, { width: "40%" }]} />
+                <View
+                  style={[
+                    styles.audioProgress,
+                    { width: playingAudioId === item.id ? "100%" : "0%" },
+                  ]}
+                />
               </View>
               <Text style={[styles.audioDuration, isMine && { color: "#fff" }]}>
-                0:12
+                {playingAudioId === item.id ? "Playing..." : "Voice Note"}
               </Text>
-            </View>
+            </Pressable>
           )}
 
           {item.type === "video" && (
-            <View style={styles.videoContainer}>
+            <Pressable
+              onPress={() => handleOpenFile(item.mediaUrl || "")}
+              style={styles.videoContainer}
+            >
               <Image
                 source={{ uri: item.mediaUrl }} // Cloudinary returns thumbnail for videos usually
                 style={styles.messageVideoThumbnail}
@@ -548,11 +620,12 @@ export default function ConversationScreen() {
               <View style={styles.videoPlayOverlay}>
                 <Ionicons name="play" size={40} color="#fff" />
               </View>
-            </View>
+            </Pressable>
           )}
 
           {item.type === "file" && (
-            <View
+            <Pressable
+              onPress={() => handleOpenFile(item.mediaUrl || "")}
               style={[styles.fileContainer, isMine && styles.fileContainerMine]}
             >
               <View style={styles.fileInfo}>
@@ -581,11 +654,11 @@ export default function ConversationScreen() {
                 </View>
               </View>
               <Ionicons
-                name="download-outline"
+                name="open-outline"
                 size={20}
                 color={isMine ? "#fff" : "#666"}
               />
-            </View>
+            </Pressable>
           )}
 
           {item.text && (

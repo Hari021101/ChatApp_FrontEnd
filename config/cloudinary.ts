@@ -1,4 +1,4 @@
 export const CLOUDINARY_CONFIG = {
-  cloudName: "YOUR_CLOUD_NAME", // User will replace this
-  uploadPreset: "chatapp_uploads", // User will replace this
+  cloudName: "del9ul8xk", // Updated with your actual cloud name
+  uploadPreset: "chatapp_uploads", // Check that this matches your Unsigned Upload Preset exactly
 };

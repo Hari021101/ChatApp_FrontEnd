@@ -11,6 +11,7 @@ import {
     Image,
     Keyboard,
     Modal,
+    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -145,17 +146,20 @@ export default function ProfileScreen() {
       }
 
       // Load Image from AsyncStorage (as fallback for local URI)
-      const storedImage = await AsyncStorage.getItem(
-        `profile_image_${user.uid}`,
-      );
+      let storedImage = await AsyncStorage.getItem(`profile_image_${user.uid}`);
+      
+      let finalImage = (firestoreData as any).profileImage || storedImage || user.photoURL || null;
+      // Do not use blob URIs across reloads as they expire and crash the image renderer
+      if (finalImage && finalImage.startsWith("blob:")) {
+        finalImage = null;
+      }
 
       setUserData((prev) => {
         const fireData = firestoreData as any;
         return {
           ...prev,
           ...fireData,
-          profileImage:
-            fireData.profileImage || storedImage || user.photoURL || null,
+          profileImage: finalImage,
           name: user.displayName || fireData.name || "",
           email: user.email || "",
         };
@@ -185,7 +189,7 @@ export default function ProfileScreen() {
     }
 
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: (ImagePicker as any).MediaType.Images,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.5,
@@ -457,15 +461,7 @@ export default function ProfileScreen() {
               <Text style={[styles.modalTitle, isDark && styles.textDark]}>
                 Enter {editingField?.label}
               </Text>
-              <Pressable onPress={() => setEditModalVisible(false)}>
-                <Ionicons
-                  name="close"
-                  size={24}
-                  color={isDark ? "#fff" : Colors.light.text}
-                />
-              </Pressable>
             </View>
-
             {editingField?.key === "phone" ? (
               <View style={styles.phoneInputRow}>
                 <Pressable
@@ -506,26 +502,27 @@ export default function ProfileScreen() {
                     color={isDark ? "#888" : "#666"}
                   />
                 </Pressable>
-                <TextInput
-                  style={[
-                    styles.modalInput,
-                    styles.phoneInput,
-                    isDark && styles.textDark,
-                  ]}
-                  value={editingField?.value}
-                  onChangeText={(text) => {
-                    const filtered = text.replace(/[^0-9]/g, "");
-                    setEditingField(
-                      editingField
-                        ? { ...editingField, value: filtered }
-                        : null,
-                    );
-                  }}
-                  keyboardType="phone-pad"
-                  autoFocus={true}
-                  placeholder="Phone number"
-                  placeholderTextColor={isDark ? "#555" : "#ccc"}
-                />
+                
+                <View style={styles.phoneInputWrapper}>
+                  <TextInput
+                    style={[
+                      styles.modalInput,
+                      styles.phoneInput,
+                      isDark && styles.textDark,
+                    ]}
+                    value={editingField?.value}
+                    onChangeText={(text) => {
+                      const filtered = text.replace(/[^0-9]/g, "");
+                      setEditingField(
+                        editingField ? { ...editingField, value: filtered } : null,
+                      );
+                    }}
+                    keyboardType="phone-pad"
+                    autoFocus={true}
+                    placeholder="Phone number"
+                    placeholderTextColor={isDark ? "#7d8b99" : "#a1a1aa"}
+                  />
+                </View>
               </View>
             ) : (
               <TextInput
@@ -538,7 +535,7 @@ export default function ProfileScreen() {
                 }
                 autoFocus={true}
                 placeholder={`Enter ${editingField?.label.toLowerCase()}`}
-                placeholderTextColor={isDark ? "#555" : "#ccc"}
+                placeholderTextColor={isDark ? "#7d8b99" : "#a1a1aa"}
               />
             )}
 
@@ -708,7 +705,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   avatarPlaceholderDark: {
-    backgroundColor: "#2c2c2e",
+    backgroundColor: "#2b3643",
   },
   avatarText: {
     fontSize: 64,
@@ -738,8 +735,8 @@ const styles = StyleSheet.create({
     borderColor: "#c6c6c8",
   },
   groupDark: {
-    backgroundColor: "#1c1c1e",
-    borderColor: "#38383a",
+    backgroundColor: "#17212b",
+    borderColor: "#0e1621",
   },
   settingItem: {
     flexDirection: "row",
@@ -748,7 +745,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   settingItemDark: {
-    backgroundColor: "#1c1c1e",
+    backgroundColor: "#17212b",
   },
   settingItemPressed: {
     backgroundColor: "#f2f2f7",
@@ -758,7 +755,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#c6c6c8",
   },
   itemBorderDark: {
-    borderBottomColor: "#38383a",
+    borderBottomColor: "#0e1621",
   },
   settingIconContainer: {
     width: 38,
@@ -799,36 +796,47 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalContent: {
     backgroundColor: "#ffffff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderRadius: 4,
     padding: 24,
-    minHeight: 300,
+    width: "85%",
+    elevation: 8,
+    boxShadow: "0 4px 10px rgba(0, 0, 0, 0.3)",
   },
   modalContentDark: {
-    backgroundColor: "#1c1c1e",
+    backgroundColor: "#17212b",
   },
   modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 24,
+    marginBottom: 20,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: "700",
+    fontSize: 18,
+    fontWeight: "600",
     color: Colors.light.text,
   },
+  modalInputWrapper: {
+    /* Deprecated but kept to prevent residual crashes */
+  },
+  modalInputWrapperDark: {
+    /* Deprecated */
+  },
+  phoneInputWrapper: {
+    flex: 1,
+    marginBottom: 0,
+  },
   modalInput: {
-    fontSize: 18,
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.light.primary,
-    paddingVertical: 12,
+    fontSize: 16,
     color: Colors.light.text,
-    marginBottom: 32,
+    borderBottomWidth: 2,
+    borderBottomColor: "#00A884", // Pure WhatsApp Green!
+    paddingVertical: 8,
+    paddingHorizontal: 0,
+    marginBottom: 24,
+    ...(Platform.OS === 'web' && { outlineStyle: "none" } as any),
   },
   modalButtons: {
     flexDirection: "row",
@@ -836,26 +844,28 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   modalButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 4,
   },
   cancelBtn: {
-    backgroundColor: "#f2f2f7",
+    backgroundColor: "transparent",
   },
   cancelBtnDark: {
-    backgroundColor: "#2c2c2e",
+    backgroundColor: "transparent",
   },
   saveBtn: {
-    backgroundColor: Colors.light.primary,
+    backgroundColor: "transparent",
   },
   cancelBtnText: {
-    color: Colors.light.textMuted,
+    color: "#00A884", // WhatsApp Green!
     fontWeight: "700",
+    textTransform: "uppercase",
   },
   saveBtnText: {
-    color: "#ffffff",
+    color: "#00A884", // WhatsApp Green!
     fontWeight: "700",
+    textTransform: "uppercase",
   },
   phoneInputRow: {
     flexDirection: "row",
@@ -874,7 +884,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   countryPickerTriggerDark: {
-    backgroundColor: "#2c2c2e",
+    backgroundColor: "#2b3643",
   },
   miniFlag: {
     width: 24,
@@ -904,16 +914,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     maxHeight: "80%",
     padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 15,
+    boxShadow: "0 10px 15px rgba(0, 0, 0, 0.25)",
     elevation: 10,
   },
   countrySelectorOverlayDark: {
-    backgroundColor: "#1c1c1e",
+    backgroundColor: "#17212b",
     borderWidth: 1,
-    borderColor: "#38383a",
+    borderColor: "#0e1621",
   },
   searchBar: {
     flexDirection: "row",

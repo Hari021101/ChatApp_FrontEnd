@@ -79,10 +79,9 @@ function RootLayoutContent() {
 
   useEffect(() => {
     if (!initializing) {
-      const inTabs = segments[0] === "(tabs)";
       const inLogin = segments[0] === "login";
 
-      if (user && !inTabs) {
+      if (user && inLogin) {
         router.replace("/(tabs)");
       } else if (!user && !inLogin) {
         router.replace("/login");
@@ -94,7 +93,17 @@ function RootLayoutContent() {
 
   return (
     <NavThemeProvider value={theme === "dark" ? NavDarkTheme : NavLightTheme}>
-      <Stack>
+      <Stack
+        screenOptions={{
+          headerStyle: {
+            backgroundColor: theme === "dark" ? "#17212b" : "#3390ec",
+          },
+          headerTintColor: "#fff",
+          headerTitleStyle: {
+            fontWeight: "bold",
+          },
+        }}
+      >
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -103,7 +112,7 @@ function RootLayoutContent() {
           options={{ presentation: "modal", title: "Modal" }}
         />
       </Stack>
-      <StatusBar style={theme === "dark" ? "light" : "dark"} />
+      <StatusBar style="light" />
     </NavThemeProvider>
   );
 }

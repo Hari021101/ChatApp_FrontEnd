@@ -1,23 +1,27 @@
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import {
-    collection,
-    doc,
-    getDoc,
-    onSnapshot,
-    orderBy,
-    query,
-    where,
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  where,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import SearchUsers from "../components/SearchUsers";
 import { auth, db } from "../config/firebase";
@@ -41,18 +45,63 @@ export default function ChatScreen() {
   const isDark = theme === "dark";
   const user = auth.currentUser;
 
+  const createDummyChats = async () => {
+    if (!user) return;
+    try {
+      const dummy1Id = "dummy_user_1_" + Date.now();
+      await setDoc(doc(db, "users", dummy1Id), {
+        displayName: "Alice Smith",
+        email: "alice@example.com",
+        photoURL: "https://i.pravatar.cc/150?u=alice",
+      });
+
+      const chat1Ref = doc(collection(db, "chats"));
+      await setDoc(chat1Ref, {
+        participants: [user.uid, dummy1Id],
+        participantNames: {
+          [dummy1Id]: "Alice Smith",
+          [user.uid]: user.displayName || "You",
+        },
+        lastMessage: "Hey, are we still on for tomorrow?",
+        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        unreadCounts: { [user.uid]: 2, [dummy1Id]: 0 },
+        type: "direct",
+      });
+
+      const dummy2Id = "dummy_user_2_" + Date.now();
+      await setDoc(doc(db, "users", dummy2Id), {
+        displayName: "Bob Jones",
+        email: "bob@example.com",
+        photoURL: "https://i.pravatar.cc/150?u=bob",
+      });
+
+      const chat2Ref = doc(collection(db, "chats"));
+      await setDoc(chat2Ref, {
+        participants: [user.uid, dummy2Id],
+        participantNames: {
+          [dummy2Id]: "Bob Jones",
+          [user.uid]: user.displayName || "You",
+        },
+        lastMessage: "Sent an attachment",
+        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        unreadCounts: { [user.uid]: 0, [dummy2Id]: 0 },
+        type: "direct",
+      });
+
+      alert("Successfully injected 2 dummy chats! 🚀");
+    } catch (e: any) {
+      console.error(e);
+      alert("Error generating chats: " + e.message);
+    }
+  };
+
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
-
-  useEffect(() => {
-    const unsubscribeConnection = onSnapshot(doc(db, ".info/connected"), (snapshot) => {
-      setIsConnected(snapshot.data()?.connected ?? true);
-    });
-    return () => unsubscribeConnection();
-  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -220,17 +269,29 @@ export default function ChatScreen() {
           <Text style={[styles.headerTitle, isDark && styles.textDark]}>
             Chats
           </Text>
-          <TouchableOpacity
-            style={styles.addChatBtn}
-            onPress={() => setShowSearch(true)}
-          >
-            <Text style={styles.addChatIcon}>+</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: 15 }}>
+            <TouchableOpacity
+              style={styles.addChatBtn}
+              onPress={createDummyChats}
+            >
+              <Text style={styles.addChatIcon}>🐛</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addChatBtn}
+              onPress={() => setShowSearch(true)}
+            >
+              <Text style={styles.addChatIcon}>+</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         <View
           style={[styles.searchContainer, isDark && styles.searchContainerDark]}
         >
-          <Text style={styles.searchIcon}>🔍</Text>
+          <Ionicons
+            name="search"
+            size={20}
+            color={isDark ? "#8e8e93" : "#64748b"}
+          />
           <TextInput
             style={[styles.searchInput, isDark && styles.textDark]}
             placeholder="Search conversations..."
@@ -238,6 +299,15 @@ export default function ChatScreen() {
             onChangeText={setSearchQuery}
             placeholderTextColor={isDark ? "#8e8e93" : "#999"}
           />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery("")}>
+              <Ionicons
+                name="close-circle"
+                size={20}
+                color={isDark ? "#8e8e93" : "#999"}
+              />
+            </Pressable>
+          )}
         </View>
       </View>
 
@@ -281,7 +351,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
   },
   containerDark: {
-    backgroundColor: "#000000",
+    backgroundColor: "#0e1621",
   },
   centered: {
     justifyContent: "center",
@@ -294,7 +364,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   headerDark: {
-    backgroundColor: "#1c1c1e",
+    backgroundColor: "#17212b",
   },
   headerTitle: {
     fontSize: 32,
@@ -324,22 +394,22 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.95)", // Glassy elevated effect against blue
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    boxShadow: "0 2px 4px rgba(0,0,0,0.1)", // Smooth depth
+    elevation: 2,
   },
   searchContainerDark: {
-    backgroundColor: "#2c2c2e",
-  },
-  searchIcon: {
-    fontSize: 18,
-    marginRight: 10,
+    backgroundColor: "#1c242d", // Deep separation layer for dark mode
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
     color: "#000000",
+    marginLeft: 8,
+    ...(Platform.OS === "web" && ({ outlineStyle: "none" } as any)),
   },
   listContainer: {
     paddingBottom: 20,
@@ -351,7 +421,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   chatItemDark: {
-    backgroundColor: "#000000",
+    backgroundColor: "#0e1621",
   },
   avatarContainer: {
     position: "relative",

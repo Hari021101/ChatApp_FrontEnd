@@ -146,10 +146,8 @@ const styles = StyleSheet.create({
     padding: 32,
     width: "90%",
     maxWidth: 400,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
+    padding: 20,
+    boxShadow: "0 10px 10px rgba(0, 0, 0, 0.25)",
     elevation: 5,
   },
   modalContentDark: {

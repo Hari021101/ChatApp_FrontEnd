@@ -10,36 +10,37 @@ const tintColorDark = "#fff";
 
 export const Colors = {
   light: {
-    primary: "#6366f1",
-    secondary: "#8b5cf6",
-    text: "#1e293b",
-    textMuted: "#64748b",
-    background: "#f8fafc",
+    primary: "#3390ec", // Telegram Blue
+    secondary: "#54a9eb", // Telegram Light Blue
+    text: "#000000",
+    textMuted: "#707579",
+    background: "#ffffff",
     surface: "#ffffff",
-    border: "#e2e8f0",
-    tint: "#6366f1",
-    icon: "#64748b",
-    tabIconDefault: "#94a3b8",
-    tabIconSelected: "#6366f1",
-    success: "#10b981",
-    error: "#ef4444",
+    border: "#dfdfe5",
+    tint: "#3390ec",
+    icon: "#707579",
+    tabIconDefault: "#b0b3b8",
+    tabIconSelected: "#3390ec",
+    success: "#42B72A",
+    error: "#e53935",
   },
   dark: {
-    primary: "#818cf8",
-    secondary: "#a78bfa",
-    text: "#f1f5f9",
-    textMuted: "#94a3b8",
-    background: "#0f172a",
-    surface: "#1e293b",
-    border: "#334155",
-    tint: "#818cf8",
-    icon: "#94a3b8",
-    tabIconDefault: "#475569",
-    tabIconSelected: "#f1f5f9",
-    success: "#34d399",
-    error: "#f87171",
+    primary: "#2AABEE", // Telegram Dark Blue Accent
+    secondary: "#54a9eb",
+    text: "#ffffff",
+    textMuted: "#7d8b99",
+    background: "#0e1621", // Telegram Deep Dark Background
+    surface: "#17212b", // Telegram Dark Surface Header/Cards
+    border: "#2b3643",
+    tint: "#2AABEE",
+    icon: "#7d8b99",
+    tabIconDefault: "#6e7c87",
+    tabIconSelected: "#2AABEE",
+    success: "#50a747",
+    error: "#e53935",
   },
 };
+
 
 export const Fonts = Platform.select({
   ios: {

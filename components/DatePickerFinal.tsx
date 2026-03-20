@@ -363,10 +363,7 @@ const styles = StyleSheet.create({
     padding: 24,
     width: "90%",
     maxWidth: 380,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.4,
-    shadowRadius: 30,
+    boxShadow: "0 20px 30px rgba(0, 0, 0, 0.4)",
     elevation: 24,
   } as ViewStyle,
   modalDark: {
