@@ -1,9 +1,10 @@
-import { CLOUDINARY_CONFIG } from "../config/cloudinary";
+import { Platform } from "react-native";
+import { UPLOAD_URL, BACKEND_URL } from "../config/api";
 
 /**
- * Uploads a file (image, audio, video, doc) to Cloudinary
+ * Uploads a file (image, audio, video, doc) to your C# Backend
  * @param uri Local file URI
- * @param path Unused in Cloudinary (handled by preset)
+ * @param _path Unused (handled by backend)
  * @returns Download URL or null
  */
 export const uploadFile = async (
@@ -14,47 +15,58 @@ export const uploadFile = async (
     const formData = new FormData();
     const extension = uri.split(".").pop()?.toLowerCase() || "jpg";
     let type = "image/jpeg";
-    let resourceType = "image";
 
     if (["mp4", "mov", "avi"].includes(extension)) {
       type = "video/mp4";
-      resourceType = "video";
     } else if (["mp3", "m4a", "wav", "caf"].includes(extension)) {
       type = "audio/mpeg";
-      resourceType = "video"; // Cloudinary treats audio as type 'video'
-    } else if (["pdf", "doc", "docx", "txt"].includes(extension)) {
-      type = "application/pdf";
-      resourceType = "raw";
     }
 
-    // @ts-ignore
-    formData.append("file", {
-      uri: uri,
-      type: type,
-      name: `upload.${extension}`,
-    });
-    formData.append("upload_preset", CLOUDINARY_CONFIG.uploadPreset);
-    formData.append("resource_type", resourceType);
+    // WEB COMPATIBILITY: Fetch the blobcause FormData doesn't support URI objects in browsers
+    if (Platform.OS === "web") {
+      try {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        formData.append("file", blob, `upload_${Date.now()}.${extension}`);
+      } catch (e) {
+        console.error("Error creating blob from URI:", e);
+        return null;
+      }
+    } else {
+      // @ts-ignore
+      formData.append("file", {
+        uri: uri,
+        type: type,
+        name: `upload_${Date.now()}.${extension}`,
+      });
+    }
 
-    const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CONFIG.cloudName}/${resourceType}/upload`,
-      {
-        method: "POST",
-        body: formData,
+    const response = await fetch(UPLOAD_URL, {
+      method: "POST",
+      body: formData,
+      headers: {
+        "Accept": "application/json",
       },
-    );
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Backend Upload Error Status:", response.status, errorText);
+      return null;
+    }
 
     const data = await response.json();
-    if (data.secure_url) {
-      return data.secure_url;
+    
+    // Adjust based on your C# Backend response
+    const fileUrl = data.url || data.path || data.secure_url;
+    
+    if (fileUrl) {
+      return fileUrl.startsWith("http") ? fileUrl : `${BACKEND_URL}${fileUrl}`;
     }
 
-    if (data.error) {
-      console.error("Cloudinary Error:", data.error.message);
-    }
     return null;
   } catch (error) {
-    console.error("Error uploading file to Cloudinary:", error);
+    console.error("Error uploading file to Backend:", error);
     return null;
   }
 };

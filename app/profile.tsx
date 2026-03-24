@@ -22,6 +22,7 @@ import {
 import { uploadFile } from "../utils/storage";
 import DatePickerFinal from "../components/DatePickerFinal";
 import { auth, db } from "../config/firebase";
+import { API_URL } from "../config/api"; // Add this
 import { Colors } from "../constants/theme";
 import { useAppTheme } from "../context/ThemeContext";
 
@@ -119,16 +120,25 @@ export default function ProfileScreen() {
     if (user) {
       try {
         setUserData({ ...userData, dateOfBirth: newDate });
+        
+        // Save to C# Backend
+        await fetch(`${API_URL}/Users/profile`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            ...userData, 
+            email: user.email, 
+            displayName: userData.name, 
+            photoURL: userData.profileImage,
+            dateOfBirth: newDate 
+          }),
+        });
+
+        // Fallback: Save to Firestore
         const docRef = doc(db, "users", user.uid);
         await setDoc(docRef, { dateOfBirth: newDate }, { merge: true });
       } catch (error: any) {
         console.error("Error saving date:", error);
-        if (error.code === "permission-denied") {
-          Alert.alert(
-            "Permission Error",
-            "Firebase permissions are missing. Please update your Firestore rules.",
-          );
-        }
       }
     }
   };
@@ -136,39 +146,33 @@ export default function ProfileScreen() {
   const loadProfile = async () => {
     if (!user) return;
     try {
-      // Load Firestore data
+      // 1. Try to load from C# Backend first
+      const response = await fetch(`${API_URL}/Users/profile/${user.email}`);
+      
+      if (response.ok) {
+        const backendData = await response.json();
+        setUserData({
+          ...userData,
+          ...backendData,
+          name: backendData.displayName || user.displayName || "",
+          email: user.email || "",
+          profileImage: backendData.photoURL || user.photoURL || null,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // 2. Fallback to Firestore if backend fails/not found
       const docRef = doc(db, "users", user.uid);
       const docSnap = await getDoc(docRef);
-
-      let firestoreData = {};
       if (docSnap.exists()) {
-        firestoreData = docSnap.data();
-      }
-
-      // Load Image from AsyncStorage (as fallback for local URI)
-      let storedImage = await AsyncStorage.getItem(`profile_image_${user.uid}`);
-      
-      let finalImage = (firestoreData as any).profileImage || storedImage || user.photoURL || null;
-      // Do not use blob URIs across reloads as they expire and crash the image renderer
-      if (finalImage && finalImage.startsWith("blob:")) {
-        finalImage = null;
-      }
-
-      setUserData((prev) => {
-        const fireData = firestoreData as any;
-        return {
+        const fireData = docSnap.data();
+        setUserData((prev) => ({
           ...prev,
           ...fireData,
-          profileImage: finalImage,
-          name: user.displayName || fireData.name || "",
+          name: user.displayName || (fireData as any).name || "",
           email: user.email || "",
-        };
-      });
-
-      // Try to extract country code from phone if exists
-      if ((firestoreData as any).phone) {
-        const phone = (firestoreData as any).phone;
-        // We'll handle this in UI mostly, but if we have a list we can match
+        }));
       }
     } catch (error) {
       console.error("Error loading profile:", error);
@@ -250,19 +254,31 @@ export default function ProfileScreen() {
       Keyboard.dismiss();
 
       try {
-        // Update Firestore first to ensure data is saved
+        // 1. Update State
+        const updatedData = { ...userData, [key]: newValue };
+        setUserData(updatedData);
+
+        // 2. Update C# Backend
+        await fetch(`${API_URL}/Users/profile`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            ...updatedData, 
+            email: user.email,
+            displayName: updatedData.name, 
+            photoURL: updatedData.profileImage 
+          }),
+        });
+
+        // 3. Fallback: Update Firestore
         const docRef = doc(db, "users", user.uid);
         await setDoc(docRef, { [key]: newValue }, { merge: true });
-
-        // Update Local State
-        setUserData({ ...userData, [key]: newValue });
 
         // Special case: Update Auth Display Name
         if (key === "name") {
           await updateProfile(user, { displayName: newValue });
         }
 
-        // Close modal immediately upon success
         setEditModalVisible(false);
         setEditingField(null);
       } catch (error) {

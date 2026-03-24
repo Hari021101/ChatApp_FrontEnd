@@ -1,5 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { useNavigation } from "@react-navigation/native";
+import { DrawerActions } from "@react-navigation/native";
 import {
   collection,
   doc,
@@ -11,6 +13,7 @@ import {
   setDoc,
   where,
 } from "firebase/firestore";
+import { HubConnectionState } from "@microsoft/signalr";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -26,7 +29,8 @@ import {
 import SearchUsers from "../components/SearchUsers";
 import { auth, db } from "../config/firebase";
 import { Colors } from "../constants/theme";
-import { useAppTheme } from "../context/ThemeContext";
+import { ThemeProvider, useAppTheme } from "../context/ThemeContext";
+import { chatHub } from "../services/hub";
 
 type Chat = {
   id: string;
@@ -44,6 +48,11 @@ export default function ChatScreen() {
   const { theme } = useAppTheme();
   const isDark = theme === "dark";
   const user = auth.currentUser;
+  const navigation = useNavigation();
+
+  const toggleDrawer = () => {
+    navigation.dispatch(DrawerActions.toggleDrawer());
+  };
 
   const createDummyChats = async () => {
     if (!user) return;
@@ -98,6 +107,19 @@ export default function ChatScreen() {
   };
 
   const [chats, setChats] = useState<Chat[]>([]);
+  const [serverStatus, setServerStatus] = useState<HubConnectionState>(
+    chatHub.getConnectionState(),
+  );
+
+  useEffect(() => {
+    // Sync initial state
+    setServerStatus(chatHub.getConnectionState());
+
+    // Listen for changes
+    chatHub.onConnectionStateChange((newState) => {
+      setServerStatus(newState);
+    });
+  }, []);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
@@ -266,10 +288,13 @@ export default function ChatScreen() {
       {/* Header */}
       <View style={[styles.header, isDark && styles.headerDark]}>
         <View style={styles.headerTop}>
+          <TouchableOpacity onPress={toggleDrawer} style={styles.hamburgerBtn}>
+            <Ionicons name="menu" size={28} color="#ffffff" />
+          </TouchableOpacity>
           <Text style={[styles.headerTitle, isDark && styles.textDark]}>
             Chats
           </Text>
-          <View style={{ flexDirection: "row", gap: 15 }}>
+          <View style={styles.headerRight}>
             <TouchableOpacity
               style={styles.addChatBtn}
               onPress={createDummyChats}
@@ -282,6 +307,16 @@ export default function ChatScreen() {
             >
               <Text style={styles.addChatIcon}>+</Text>
             </TouchableOpacity>
+            {/* C# Server Status Indicator */}
+            <View style={{
+              width: 10,
+              height: 10,
+              borderRadius: 5,
+              backgroundColor: serverStatus === HubConnectionState.Connected ? "#4ade80" : "#fb7185",
+              marginLeft: 10,
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.3)"
+            }} />
           </View>
         </View>
         <View
@@ -366,16 +401,24 @@ const styles = StyleSheet.create({
   headerDark: {
     backgroundColor: "#17212b",
   },
+  headerTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 15,
+  },
   headerTitle: {
-    fontSize: 32,
+    flex: 1,
+    fontSize: 24,
     fontWeight: "bold",
     color: "#ffffff",
   },
-  headerTop: {
+  headerRight: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 15,
+    gap: 15,
+  },
+  hamburgerBtn: {
+    marginRight: 20,
   },
   addChatBtn: {
     width: 40,

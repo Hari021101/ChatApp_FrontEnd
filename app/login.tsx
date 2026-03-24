@@ -2,8 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import {
     GoogleAuthProvider,
     createUserWithEmailAndPassword,
+    getRedirectResult,
     signInWithEmailAndPassword,
-    signInWithPopup,
+    signInWithRedirect,
     updateProfile,
 } from "@firebase/auth";
 import { LinearGradient } from "expo-linear-gradient";
@@ -24,6 +25,7 @@ import {
     View,
 } from "react-native";
 import { auth } from "../config/firebase";
+import { authService } from "../services/authService";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -148,6 +150,19 @@ export default function LoginScreen() {
       friction: 8,
       useNativeDriver: false,
     }).start();
+
+    // Handle Google Redirect Result on Web
+    if (Platform.OS === "web") {
+      getRedirectResult(auth)
+        .then((result) => {
+          if (result) {
+            router.replace("/(tabs)");
+          }
+        })
+        .catch((error) => {
+          console.error("Google Redirect Error:", error);
+        });
+    }
   }, []);
 
   const drift1X = aurora1.interpolate({
@@ -210,6 +225,19 @@ export default function LoginScreen() {
         password,
       );
       await updateProfile(userCredential.user, { displayName: name });
+      
+      // Register in C# Backend
+      try {
+        await authService.register({
+          id: userCredential.user.uid,
+          email: userCredential.user.email || email,
+          displayName: name,
+        });
+        console.log("Registered in C# Backend! 🏗️");
+      } catch (backendError) {
+        console.warn("Failed to register in C# backend, but Firebase succeeded:", backendError);
+      }
+
       Alert.alert("Success", "Account created successfully!");
       router.replace("/(tabs)");
     } catch (error: any) {
@@ -235,8 +263,7 @@ export default function LoginScreen() {
     try {
       const provider = new GoogleAuthProvider();
       if (Platform.OS === "web") {
-        await signInWithPopup(auth, provider);
-        router.replace("/(tabs)");
+        await signInWithRedirect(auth, provider);
       } else {
         Alert.alert(
           "Notice",

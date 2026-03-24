@@ -22,11 +22,12 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with Offline Persistence
+// Initialize Firestore with Offline Persistence and Network Compatibility
 const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentSingleTabManager({})
-  })
+  }),
+  experimentalAutoDetectLongPolling: true, 
 });
 
 export const auth = getAuth(app);

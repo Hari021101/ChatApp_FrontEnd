@@ -4,6 +4,9 @@ import {
     ThemeProvider as NavThemeProvider,
 } from "@react-navigation/native";
 import { Stack } from "expo-router";
+import { Drawer } from "expo-router/drawer";
+import CustomDrawer from "../components/CustomDrawer";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 
@@ -22,6 +25,7 @@ import { useRef } from "react";
 import { Platform } from "react-native";
 
 import { setupPresenceListener } from "../utils/presence";
+import { chatHub } from "../services/hub";
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -75,6 +79,14 @@ function RootLayoutContent() {
     }
   }, [user]);
 
+  // Handle SignalR Connection Lifecycle
+  useEffect(() => {
+    chatHub.startConnection();
+    return () => {
+      chatHub.stopConnection();
+    };
+  }, []);
+
   const segments = useSegments();
 
   useEffect(() => {
@@ -93,25 +105,48 @@ function RootLayoutContent() {
 
   return (
     <NavThemeProvider value={theme === "dark" ? NavDarkTheme : NavLightTheme}>
-      <Stack
-        screenOptions={{
-          headerStyle: {
-            backgroundColor: theme === "dark" ? "#17212b" : "#3390ec",
-          },
-          headerTintColor: "#fff",
-          headerTitleStyle: {
-            fontWeight: "bold",
-          },
-        }}
-      >
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="modal"
-          options={{ presentation: "modal", title: "Modal" }}
-        />
-      </Stack>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <Drawer
+          drawerContent={(props) => <CustomDrawer {...props} />}
+          screenOptions={{
+            headerStyle: {
+              backgroundColor: theme === "dark" ? "#17212b" : "#3390ec",
+            },
+            headerTintColor: "#fff",
+            headerTitleStyle: {
+              fontWeight: "bold",
+            },
+            drawerStyle: {
+              width: "80%",
+            },
+            headerShown: false, // We'll handle headers in screens or Stack
+          }}
+        >
+          <Drawer.Screen
+            name="(tabs)"
+            options={{
+              title: "Home",
+              headerShown: false,
+            }}
+          />
+          {/* We keep other screens in Stack for better navigation flow */}
+          <Drawer.Screen
+            name="conversation/[id]"
+            options={{
+              drawerItemStyle: { display: "none" },
+              headerShown: false,
+            }}
+          />
+          <Drawer.Screen
+            name="login"
+            options={{
+              drawerItemStyle: { display: "none" },
+              headerShown: false,
+              swipeEnabled: false,
+            }}
+          />
+        </Drawer>
+      </GestureHandlerRootView>
       <StatusBar style="light" />
     </NavThemeProvider>
   );
