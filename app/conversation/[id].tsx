@@ -36,6 +36,8 @@ import { Colors } from "../../constants/theme";
 import { useAppTheme } from "../../context/ThemeContext";
 import { startRecording, stopRecording } from "../../utils/audio";
 import { uploadFile } from "../../utils/storage";
+import { chatHub } from "../../services/hub";
+import { API_URL } from "../../config/api";
 
 // Mock messages data
 type Message = {
@@ -137,59 +139,61 @@ export default function ConversationScreen() {
       }
     });
 
-    // 3. Listen to messages
-    const q = query(
-      collection(db, "chats", id, "messages"),
-      orderBy("timestamp", "asc"),
-    );
-
-    // Safety timeout to prevent infinite loading if Firestore lags
-    const loadingTimeout = setTimeout(() => {
-      setLoading(false);
-    }, 5000);
-
-    const unsubscribeMessages = onSnapshot(
-      q,
-      (snapshot) => {
-        clearTimeout(loadingTimeout);
-        const msgList = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          const isMine = data.senderId === user.uid;
-
-          // Mark as read if it's from the other user and unread
-          if (!isMine && data.read === false) {
-            try {
-              updateDoc(doc.ref, { read: true });
-            } catch (e) {
-              // Ignore or log once. Don't flood.
-            }
-          }
-
-          return {
-            ...data,
-            id: doc.id,
-            isMine,
-            timestamp: data.timestamp
-              ? data.timestamp.toDate().toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "...",
-            isPending: doc.metadata.hasPendingWrites,
-          } as Message;
+    // 3. Listen to messages via SignalR
+    const loadHistory = async () => {
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch(`${API_URL}/Chats/${id}/messages`, {
+           headers: { "Authorization": `Bearer ${token}` }
         });
-        setMessages(msgList);
+        if (response.ok) {
+          const history = await response.json();
+          const mapped = history.map((m: any) => ({
+            id: m.id,
+            text: m.content,
+            senderId: m.senderId,
+            timestamp: new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            isMine: m.senderId === user.uid,
+            type: m.messageType || "text",
+            mediaUrl: m.content.startsWith("http") ? m.content : null,
+            read: true, // Defaulting to true for now as we'll implement read receipts later
+          }));
+          setMessages(mapped);
+        }
+      } catch (err) {
+        console.error("Error loading history:", err);
+      } finally {
         setLoading(false);
-      },
-      (error) => {
-        console.error("Error fetching messages:", error);
-        setLoading(false);
-      },
-    );
+      }
+    };
+
+    loadHistory();
+
+    // Join SignalR group
+    chatHub.joinChat(id);
+
+    // Subscribe to new messages
+    chatHub.onReceiveMessage((chatId, senderId, content, timestamp, type) => {
+      if (chatId === id) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            text: type === "text" ? content : undefined,
+            mediaUrl: type !== "text" ? content : undefined,
+            senderId,
+            timestamp: new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            isMine: senderId === user.uid,
+            type: type as any,
+            read: false,
+          },
+        ]);
+      }
+    });
+
     return () => {
       unsubscribeChat();
       unsubscribeUser();
-      unsubscribeMessages();
       if (typingTimeout) clearTimeout(typingTimeout);
       if (sound) {
         sound.unloadAsync();
@@ -249,31 +253,9 @@ export default function ConversationScreen() {
       const uri = result.assets[0].uri;
       const downloadURL = await uploadFile(uri, uploadPath);
 
-      if (downloadURL) {
-        await addDoc(collection(db, "chats", id, "messages"), {
-          mediaUrl: downloadURL,
-          type: type === "video" ? "video" : "file",
-          mediaMetadata: metadata,
-          senderId: user.uid,
-          senderName: user.displayName || "User",
-          timestamp: serverTimestamp(),
-          read: false,
-        });
-
-        const chatRef = doc(db, "chats", id);
-        const chatSnap = await getDoc(chatRef);
-        const updates: any = {
-          lastMessage:
-            type === "video" ? "📽️ Video" : `📄 ${metadata.filename || "File"}`,
-          updatedAt: serverTimestamp(),
-        };
-
-        if (chatSnap.exists()) {
-          chatSnap.data().participants.forEach((p: string) => {
-            if (p !== user.uid) updates[`unreadCounts.${p}`] = increment(1);
-          });
-        }
-        await updateDoc(chatRef, updates);
+      if (downloadURL && user) {
+        // Send via SignalR (Hub will save to SQL)
+        await chatHub.sendMessage(id, user.uid, downloadURL, type === "video" ? "video" : "file");
       }
       setLoading(false);
     } catch (error) {
@@ -293,31 +275,9 @@ export default function ConversationScreen() {
         setLoading(true);
         try {
           const downloadURL = await uploadFile(uri);
-          if (downloadURL) {
-            await addDoc(collection(db, "chats", id, "messages"), {
-              mediaUrl: downloadURL,
-              type: "audio",
-              senderId: user?.uid,
-              senderName: user?.displayName || "User",
-              timestamp: serverTimestamp(),
-              read: false,
-            });
-
-            const chatRef = doc(db, "chats", id);
-            const chatSnap = await getDoc(chatRef);
-            const updates: any = {
-              lastMessage: "🎤 Voice note",
-              updatedAt: serverTimestamp(),
-            };
-
-            if (chatSnap.exists()) {
-              chatSnap.data().participants.forEach((p: string) => {
-                if (p !== user?.uid) {
-                  updates[`unreadCounts.${p}`] = increment(1);
-                }
-              });
-            }
-            await updateDoc(chatRef, updates);
+          if (downloadURL && user) {
+            // Send via SignalR
+            await chatHub.sendMessage(id, user.uid, downloadURL, "audio");
           }
         } catch (error) {
           console.error("Error sending voice note:", error);
@@ -358,30 +318,8 @@ export default function ConversationScreen() {
         const downloadURL = await uploadFile(uri, uploadPath);
 
         if (downloadURL) {
-          // Send image message
-          await addDoc(collection(db, "chats", id, "messages"), {
-            imageUrl: downloadURL,
-            senderId: user?.uid,
-            timestamp: serverTimestamp(),
-            read: false,
-          });
-
-          // Update chat doc
-          const chatSnap = await getDoc(doc(db, "chats", id));
-          let otherId = null;
-          if (chatSnap.exists()) {
-            otherId = chatSnap
-              .data()
-              .participants.find((p: string) => p !== user.uid);
-          }
-
-          await updateDoc(doc(db, "chats", id), {
-            lastMessage: "📷 Photo",
-            updatedAt: serverTimestamp(),
-            ...(otherId && {
-              [`unreadCounts.${otherId}`]: increment(1),
-            }),
-          });
+          // Send via SignalR
+          await chatHub.sendMessage(id, user.uid, downloadURL, "image");
         }
         setLoading(false);
       }
@@ -417,58 +355,19 @@ export default function ConversationScreen() {
   const handleSend = async () => {
     if (newMessage && newMessage.trim() && user && id) {
       const text = newMessage.trim();
-      setNewMessage(""); // Clear input early for better UX
-
-      // Clear typing status immediately on send
-      if (typingTimeout) clearTimeout(typingTimeout);
-      const chatRef = doc(db, "chats", id);
-      await updateDoc(chatRef, {
-        [`typing.${user.uid}`]: false,
-      });
+      setNewMessage(""); 
 
       try {
         if (editingMessage) {
-          // Update existing message
-          const msgRef = doc(db, "chats", id, "messages", editingMessage.id);
-          await updateDoc(msgRef, {
-            text,
-            isEdited: true,
-            editedAt: serverTimestamp(),
-          });
-          setEditingMessage(null);
+           // TODO: Implement Edit via SignalR or API
+           console.log("Edit not implemented in SQL yet");
+           setEditingMessage(null);
         } else {
-          // Add new message to Firestore
-          await addDoc(collection(db, "chats", id, "messages"), {
-            text,
-            senderId: user.uid,
-            senderName: user.displayName || "User",
-            timestamp: serverTimestamp(),
-            read: false,
-          });
-
-          // Update parent chat's last message and timestamp
-          const chatRef = doc(db, "chats", id);
-          const chatSnap = await getDoc(chatRef);
-
-          const updates: any = {
-            lastMessage: text,
-            updatedAt: serverTimestamp(),
-          };
-
-          if (chatSnap.exists()) {
-            const chatData = chatSnap.data();
-            chatData.participants.forEach((p: string) => {
-              if (p !== user.uid) {
-                updates[`unreadCounts.${p}`] = increment(1);
-              }
-            });
-          }
-
-          await updateDoc(chatRef, updates);
+          // Send via SignalR (Hub will save to SQL)
+          await chatHub.sendMessage(id, user.uid, text, "text");
         }
       } catch (error) {
         console.error("Error sending message:", error);
-        // Could add an alert here
       }
     }
   };

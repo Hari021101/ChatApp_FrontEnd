@@ -122,9 +122,13 @@ export default function ProfileScreen() {
         setUserData({ ...userData, dateOfBirth: newDate });
         
         // Save to C# Backend
+        const token = await user.getIdToken();
         await fetch(`${API_URL}/Users/profile`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
           body: JSON.stringify({ 
             ...userData, 
             email: user.email, 
@@ -147,7 +151,10 @@ export default function ProfileScreen() {
     if (!user) return;
     try {
       // 1. Try to load from C# Backend first
-      const response = await fetch(`${API_URL}/Users/profile/${user.email}`);
+      const token = await user.getIdToken();
+      const response = await fetch(`${API_URL}/Users/profile/${user.email}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
       
       if (response.ok) {
         const backendData = await response.json();
@@ -259,9 +266,13 @@ export default function ProfileScreen() {
         setUserData(updatedData);
 
         // 2. Update C# Backend
+        const token = await user.getIdToken();
         await fetch(`${API_URL}/Users/profile`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
           body: JSON.stringify({ 
             ...updatedData, 
             email: user.email,

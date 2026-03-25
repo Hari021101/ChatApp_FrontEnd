@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import { UPLOAD_URL, BACKEND_URL } from "../config/api";
+import { auth } from "../config/firebase";
 
 /**
  * Uploads a file (image, audio, video, doc) to your C# Backend
@@ -41,11 +42,13 @@ export const uploadFile = async (
       });
     }
 
+    const token = await auth.currentUser?.getIdToken();
     const response = await fetch(UPLOAD_URL, {
       method: "POST",
       body: formData,
       headers: {
         "Accept": "application/json",
+        ...(token ? { "Authorization": `Bearer ${token}` } : {}),
       },
     });
 

@@ -27,16 +27,25 @@ class ChatHubService {
   /**
    * Listen for incoming messages
    */
-  public onReceiveMessage(callback: (user: string, message: string) => void) {
+  public onReceiveMessage(callback: (chatId: string, senderId: string, message: string, timestamp: string, type: string) => void) {
     this.connection?.on("ReceiveMessage", callback);
+  }
+
+  /**
+   * Join a specific chat group
+   */
+  public async joinChat(chatId: string) {
+    if (this.connection?.state === HubConnectionState.Connected) {
+      await this.connection.invoke("JoinChat", chatId);
+    }
   }
 
   /**
    * Send a message to the hub
    */
-  public async sendMessage(user: string, message: string) {
+  public async sendMessage(chatId: string, senderId: string, content: string, messageType: string = "text") {
     if (this.connection?.state === HubConnectionState.Connected) {
-      await this.connection.invoke("SendMessage", user, message);
+      await this.connection.invoke("SendMessage", chatId, senderId, content, messageType);
     } else {
       console.warn("Cannot send message: SignalR not connected.");
     }

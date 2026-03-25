@@ -31,6 +31,7 @@ import { auth, db } from "../config/firebase";
 import { Colors } from "../constants/theme";
 import { ThemeProvider, useAppTheme } from "../context/ThemeContext";
 import { chatHub } from "../services/hub";
+import { API_URL } from "../config/api";
 
 type Chat = {
   id: string;
@@ -128,73 +129,43 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!user) return;
 
-    // Listen to chats where the current user is a participant
-    const q = query(
-      collection(db, "chats"),
-      where("participants", "array-contains", user.uid),
-      orderBy("updatedAt", "desc"),
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const chatPromises = snapshot.docs.map(async (chatDoc) => {
-          const data = chatDoc.data();
-          const isGroup = data.isGroup || false;
-          let chatName = "Chat";
-          let chatAvatar = "C";
-          let isOnline = false;
-
-          if (isGroup) {
-            chatName = data.groupName || "Group";
-            chatAvatar = chatName.charAt(0).toUpperCase();
-            // Optional: You could count online members here, but for now we'll leave it false
-          } else {
-            const otherId = data.participants.find(
-              (p: string) => p !== user.uid,
-            );
-            chatName = data.participantNames?.[otherId] || "Chat";
-            chatAvatar = chatName.charAt(0).toUpperCase();
-
-            if (otherId) {
-              const userSnap = await getDoc(doc(db, "users", otherId));
-              if (userSnap.exists()) {
-                const userData = userSnap.data() as { isOnline?: boolean };
-                isOnline = userData.isOnline || false;
-              }
-            }
-          }
-
-          return {
-            id: chatDoc.id,
-            name: chatName,
-            avatar: chatAvatar,
-            isGroup,
-            lastMessage: data.lastMessage || "",
-            timestamp: data.updatedAt
-              ? data.updatedAt.toDate().toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "...",
-            unread: data.unreadCounts?.[user.uid] || 0,
-            online: isOnline,
-            participants: data.participants,
-          } as Chat;
+    const fetchChats = async () => {
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch(`${API_URL}/Chats/user/${user.uid}`, {
+          headers: { "Authorization": `Bearer ${token}` }
         });
-
-        Promise.all(chatPromises).then((chatList) => {
-          setChats(chatList);
-          setLoading(false);
-        });
-      },
-      (error) => {
-        console.error("Error fetching chats:", error);
+        
+        if (response.ok) {
+          const data = await response.json();
+          const mappedChats: Chat[] = data.map((c: any) => {
+            const otherParticipant = c.participants.find((p: any) => p.userId !== user.uid);
+            return {
+              id: c.id,
+              name: c.isGroup ? c.title : (otherParticipant?.displayName || "Chat"),
+              avatar: (c.isGroup ? c.title : (otherParticipant?.displayName || "C")).charAt(0).toUpperCase(),
+              isGroup: c.isGroup,
+              lastMessage: c.lastMessage || "",
+              timestamp: new Date(c.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              unread: 0, // TODO: Implement unread counts in SQL
+              online: false, // TODO: Implement SignalR presence
+              participants: c.participants.map((p: any) => p.userId),
+            };
+          });
+          setChats(mappedChats);
+        }
+      } catch (error) {
+        console.error("Error fetching chats from SQL:", error);
+      } finally {
         setLoading(false);
-      },
-    );
+      }
+    };
 
-    return () => unsubscribe();
+    fetchChats();
+
+    // Refresh every 30 seconds or when user changes
+    const interval = setInterval(fetchChats, 30000);
+    return () => clearInterval(interval);
   }, [user]);
 
   const filteredChats = chats.filter((chat) =>

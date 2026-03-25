@@ -12,6 +12,7 @@ import React, { useState } from "react";
 import {
     ActivityIndicator,
     FlatList,
+    Image,
     Modal,
     Pressable,
     StyleSheet,
@@ -19,9 +20,10 @@ import {
     TextInput,
     View,
 } from "react-native";
-import { db } from "../config/firebase";
+import { auth, db } from "../config/firebase";
 import { Colors } from "../constants/theme";
 import CreateGroup from "./CreateGroup";
+import { authService } from "../services/authService";
 
 interface User {
   id: string;
@@ -61,23 +63,16 @@ export default function SearchUsers({
 
     setLoading(true);
     try {
-      const usersRef = collection(db, "users");
-      // Search by email exact match or name prefix
-      const q = query(
-        usersRef,
-        where("email", ">=", text.toLowerCase()),
-        where("email", "<=", text.toLowerCase() + "\uf8ff"),
-        limit(10),
-      );
-
-      const querySnapshot = await getDocs(q);
-      const results: User[] = [];
-      querySnapshot.forEach((doc) => {
-        if (doc.id !== currentUserId) {
-          results.push({ id: doc.id, ...doc.data() } as User);
-        }
-      });
-      setUsers(results);
+      const results = await authService.searchUsers(text);
+      const managedResults: User[] = results
+        .filter((u: any) => u.email !== auth.currentUser?.email) // Exclude self
+        .map((u: any) => ({
+          id: u.id, // Use the C# Id (which is now the Firebase UID)
+          name: u.displayName,
+          email: u.email,
+          profileImage: u.photoURL,
+        }));
+      setUsers(managedResults);
     } catch (error) {
       console.error("Error searching users:", error);
     } finally {
@@ -138,12 +133,10 @@ export default function SearchUsers({
     >
       <View style={styles.avatar}>
         {item.profileImage ? (
-          <Text style={styles.avatarText}>
-            {item.name.charAt(0).toUpperCase()}
-          </Text>
+          <Image source={{ uri: item.profileImage }} style={styles.avatarImage} />
         ) : (
           <Text style={styles.avatarText}>
-            {item.name.charAt(0).toUpperCase()}
+            {item.name?.charAt(0).toUpperCase() || "?"}
           </Text>
         )}
       </View>
@@ -333,6 +326,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.primary,
     justifyContent: "center",
     alignItems: "center",
+  },
+  avatarImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
   },
   avatarText: {
     color: "#fff",
