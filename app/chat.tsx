@@ -18,6 +18,7 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -43,6 +44,7 @@ type Chat = {
   online: boolean;
   participants: string[];
   isGroup?: boolean;
+  avatarUrl?: string | null;
 };
 
 export default function ChatScreen() {
@@ -144,11 +146,12 @@ export default function ChatScreen() {
               id: c.id,
               name: c.isGroup ? c.title : (otherParticipant?.displayName || "Chat"),
               avatar: (c.isGroup ? c.title : (otherParticipant?.displayName || "C")).charAt(0).toUpperCase(),
+              avatarUrl: c.isGroup ? c.imageURL : (otherParticipant?.photoURL || null),
               isGroup: c.isGroup,
               lastMessage: c.lastMessage || "",
               timestamp: new Date(c.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-              unread: 0, // TODO: Implement unread counts in SQL
-              online: false, // TODO: Implement SignalR presence
+              unread: 0,
+              online: false,
               participants: c.participants.map((p: any) => p.userId),
             };
           });
@@ -162,6 +165,16 @@ export default function ChatScreen() {
     };
 
     fetchChats();
+
+    // Listen for real-time presence updates
+    chatHub.onPresenceUpdate((userId: string, isOnline: boolean, lastSeen: string) => {
+      setChats(prev => prev.map(chat => {
+        if (!chat.isGroup && chat.participants.includes(userId)) {
+          return { ...chat, online: isOnline };
+        }
+        return chat;
+      }));
+    });
 
     // Refresh every 30 seconds or when user changes
     const interval = setInterval(fetchChats, 30000);
@@ -192,7 +205,11 @@ export default function ChatScreen() {
             isDark && styles.avatarDark,
           ]}
         >
-          <Text style={styles.avatarText}>{item.avatar}</Text>
+          {item.avatarUrl ? (
+            <Image source={{ uri: item.avatarUrl }} style={styles.avatarImage} />
+          ) : (
+            <Text style={styles.avatarText}>{item.avatar}</Text>
+          )}
         </View>
         {item.online && !item.isGroup && (
           <View
@@ -448,6 +465,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.primary,
     justifyContent: "center",
     alignItems: "center",
+    overflow: "hidden", // Added this to clip image to circle
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
   },
   avatarDark: {
     backgroundColor: Colors.light.primary,

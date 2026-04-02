@@ -15,7 +15,7 @@ import {
     serverTimestamp,
     updateDoc,
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     FlatList,
@@ -86,6 +86,8 @@ export default function ConversationScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
+  const [otherUserId, setOtherUserId] = useState<string | null>(null);
+  const otherUserIdRef = useRef<string | null>(null);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
 
@@ -106,6 +108,8 @@ export default function ConversationScreen() {
         const otherId = groupStatus
           ? null
           : data.participants.find((p: string) => p !== user.uid);
+        setOtherUserId(otherId);
+        otherUserIdRef.current = otherId;
 
         // Show typing indicator if other user is typing
         if (otherId && data.typing) {
@@ -189,6 +193,16 @@ export default function ConversationScreen() {
           },
         ]);
       }
+    });
+
+    // Presence subscription
+    chatHub.onPresenceUpdate((userId: string, isOnline: boolean, lastSeen: string) => {
+       if (userId === otherUserIdRef.current) {
+         setOtherUserStatus({
+           isOnline,
+           lastSeen: { toDate: () => new Date(lastSeen) } // Mapping to match formatLastSeen expectation
+         });
+       }
     });
 
     return () => {

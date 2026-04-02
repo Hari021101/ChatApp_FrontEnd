@@ -18,7 +18,8 @@ import {
 } from "react-native";
 import { auth, db } from "../config/firebase";
 import { Colors } from "../constants/theme";
-import { uploadImage } from "../utils/storage";
+import { uploadFile } from "../utils/storage";
+import { API_URL } from "../config/api";
 
 interface User {
   id: string;
@@ -99,44 +100,39 @@ export default function CreateGroup({
     if (!currentUser) return;
 
     try {
-      // 1. Prepare participants
-      const participants = [currentUser.uid, ...selectedUsers.map((u) => u.id)];
-      const participantNames: { [key: string]: string } = {
-        [currentUser.uid]: currentUser.displayName || "Me",
-      };
-      selectedUsers.forEach((u) => {
-        participantNames[u.id] = u.name;
-      });
+      const token = await currentUser.getIdToken();
+      let imageUrl = null;
 
-      // 2. Create Chat Doc
-      const chatData: any = {
-        isGroup: true,
-        groupName: groupName.trim(),
-        groupImage: null,
-        participants,
-        participantNames,
-        createdBy: currentUser.uid,
-        admins: [currentUser.uid],
-        lastMessage: "Group created",
-        updatedAt: serverTimestamp(),
-      };
-
-      const docRef = await addDoc(collection(db, "chats"), chatData);
-
-      // 3. Upload Image if selected
+      // 1. Upload Image IF selected (do it first so we have the URL)
       if (groupImage) {
-        const uploadPath = `groups/${docRef.id}.jpg`;
-        const downloadURL = await uploadImage(groupImage, uploadPath);
-        if (downloadURL) {
-          // Update doc with image URL
-          // Note: In a real app, you'd use updateDoc, but for consistency with previous logic:
-          // We'll leave it as null initially or update it now.
-          // Let's use setDoc merge for safety as per previous patterns.
-          // However, for brevity in this initial implementation, we'll just handle it.
-        }
+        const uploadPath = `groups/${Date.now()}.jpg`;
+        imageUrl = await uploadFile(groupImage, uploadPath);
       }
 
-      onGroupCreated(docRef.id, groupName.trim());
+      // 2. Prepare participants
+      const participantIds = [currentUser.uid, ...selectedUsers.map((u) => u.id)];
+
+      // 3. Create Chat via Backend API
+      const response = await fetch(`${API_URL}/Chats/group`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: groupName.trim(),
+          imageURL: imageUrl,
+          participantIds: participantIds
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create group on backend");
+      }
+
+      const newGroup = await response.json();
+
+      onGroupCreated(newGroup.id, groupName.trim());
       onClose();
       // Reset state
       setGroupName("");

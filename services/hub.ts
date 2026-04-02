@@ -32,6 +32,13 @@ class ChatHubService {
   }
 
   /**
+   * Listen for user presence updates
+   */
+  public onPresenceUpdate(callback: (userId: string, isOnline: boolean, lastSeen: string) => void) {
+    this.connection?.on("UserPresenceUpdate", callback);
+  }
+
+  /**
    * Join a specific chat group
    */
   public async joinChat(chatId: string) {
