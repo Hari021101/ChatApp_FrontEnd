@@ -27,8 +27,15 @@ class ChatHubService {
   /**
    * Listen for incoming messages
    */
-  public onReceiveMessage(callback: (chatId: string, senderId: string, message: string, timestamp: string, type: string) => void) {
+  public onReceiveMessage(callback: (chatId: string, senderId: string, message: string, timestamp: string, type: string, isRead: boolean) => void) {
     this.connection?.on("ReceiveMessage", callback);
+  }
+
+  /**
+   * Listen for when messages are read by other user
+   */
+  public onMessagesRead(callback: (chatId: string, readerId: string, readAt: string) => void) {
+    this.connection?.on("MessagesRead", callback);
   }
 
   /**
@@ -42,20 +49,21 @@ class ChatHubService {
    * Join a specific chat group
    */
   public async joinChat(chatId: string) {
-    if (this.connection?.state === HubConnectionState.Connected) {
-      await this.connection.invoke("JoinChat", chatId);
-    }
+    await this.connection?.send("JoinChat", chatId);
   }
 
   /**
-   * Send a message to the hub
+   * Send a message through the SignalR hub
    */
-  public async sendMessage(chatId: string, senderId: string, content: string, messageType: string = "text") {
-    if (this.connection?.state === HubConnectionState.Connected) {
-      await this.connection.invoke("SendMessage", chatId, senderId, content, messageType);
-    } else {
-      console.warn("Cannot send message: SignalR not connected.");
-    }
+  public async sendMessage(chatId: string, senderId: string, content: string, type: string = "text") {
+    await this.connection?.send("SendMessage", chatId, senderId, content, type);
+  }
+
+  /**
+   * Mark messages as read in the backend
+   */
+  public async markAsRead(chatId: string) {
+    await this.connection?.send("MarkAsRead", chatId);
   }
 
   /**

@@ -18,7 +18,7 @@ import { auth } from "../config/firebase";
 import { ThemeProvider, useAppTheme } from "../context/ThemeContext";
 import { 
   registerForPushNotificationsAsync, 
-  savePushTokenToFirestore 
+  savePushTokenToBackend 
 } from "../utils/notifications";
 import * as Notifications from "expo-notifications";
 import { useRef } from "react";
@@ -52,8 +52,11 @@ function RootLayoutContent() {
       const cleanup = setupPresenceListener(user.uid);
       
       // Register for push notifications
-      registerForPushNotificationsAsync().then(token => {
-        if (token) savePushTokenToFirestore(token);
+      registerForPushNotificationsAsync().then(async token => {
+        if (token) {
+          const idToken = await user.getIdToken();
+          savePushTokenToBackend(token, idToken);
+        }
       });
 
       // Background/Terminated notification listener

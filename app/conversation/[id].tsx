@@ -160,9 +160,14 @@ export default function ConversationScreen() {
             isMine: m.senderId === user.uid,
             type: m.messageType || "text",
             mediaUrl: m.content.startsWith("http") ? m.content : null,
-            read: true, // Defaulting to true for now as we'll implement read receipts later
+            read: m.isRead || false,
           }));
           setMessages(mapped);
+
+          // Mark as read when opening historical messages
+          if (history.some((m: any) => !m.isRead && m.senderId !== user.uid)) {
+            chatHub.markAsRead(id);
+          }
         }
       } catch (err) {
         console.error("Error loading history:", err);
@@ -177,7 +182,7 @@ export default function ConversationScreen() {
     chatHub.joinChat(id);
 
     // Subscribe to new messages
-    chatHub.onReceiveMessage((chatId, senderId, content, timestamp, type) => {
+    chatHub.onReceiveMessage((chatId, senderId, content, timestamp, type, isRead) => {
       if (chatId === id) {
         setMessages((prev) => [
           ...prev,
@@ -189,9 +194,23 @@ export default function ConversationScreen() {
             timestamp: new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
             isMine: senderId === user.uid,
             type: type as any,
-            read: false,
+            read: isRead,
           },
         ]);
+
+        // If we receiver a message while in this chat, mark it as read immediately
+        if (senderId !== user.uid) {
+           chatHub.markAsRead(id);
+        }
+      }
+    });
+
+    // Subscribe to read receipts
+    chatHub.onMessagesRead((chatId, readerId, readAt) => {
+      if (chatId === id && readerId !== user.uid) {
+        setMessages((prev) => 
+          prev.map((msg) => (msg.isMine && !msg.read ? { ...msg, read: true } : msg))
+        );
       }
     });
 

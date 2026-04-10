@@ -150,7 +150,7 @@ export default function ChatScreen() {
               isGroup: c.isGroup,
               lastMessage: c.lastMessage || "",
               timestamp: new Date(c.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-              unread: 0,
+              unread: c.unreadCount || 0,
               online: false,
               participants: c.participants.map((p: any) => p.userId),
             };
