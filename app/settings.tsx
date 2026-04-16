@@ -31,6 +31,9 @@ export default function SettingsScreen() {
       case "Notification Settings":
         router.push("/settings/notifications");
         break;
+      case "Payments":
+        router.push("/settings/payments");
+        break;
       case "Help":
         router.push("/settings/help");
         break;
@@ -189,10 +192,16 @@ export default function SettingsScreen() {
               onPress={() => handleAction("Help")}
             />
             <SettingItem
-              icon="people"
-              color="#f1c40f"
-              title="Invite a friend"
-              onPress={() => handleAction("Invite Friend")}
+              icon="notifications"
+              color="#ff3b30"
+              title="Notification Settings"
+              onPress={() => handleAction("Notification Settings")}
+            />
+            <SettingItem
+              icon="card"
+              color="#4ade80"
+              title="Payments"
+              onPress={() => handleAction("Payments")}
               isLast={true}
             />
           </View>

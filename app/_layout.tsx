@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import "../config/firebase";
 import { auth } from "../config/firebase";
 import { ThemeProvider, useAppTheme } from "../context/ThemeContext";
+import { AuthProvider, useAuth } from "../context/AuthContext";
 import { 
   registerForPushNotificationsAsync, 
   savePushTokenToBackend 
@@ -33,29 +34,19 @@ export const unstable_settings = {
 
 function RootLayoutContent() {
   const { theme } = useAppTheme();
-  const [initializing, setInitializing] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
+  const { user, loading: initializing, token } = useAuth();
   
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      if (initializing) setInitializing(false);
-    });
-    return unsubscribe;
-  }, []);
 
   useEffect(() => {
     if (user) {
       const cleanup = setupPresenceListener(user.uid);
       
       // Register for push notifications
-      registerForPushNotificationsAsync().then(async token => {
-        if (token) {
-          const idToken = await user.getIdToken();
-          savePushTokenToBackend(token, idToken);
+      registerForPushNotificationsAsync().then(async pushToken => {
+        if (pushToken && token) {
+          savePushTokenToBackend(pushToken, token);
         }
       });
 
@@ -157,8 +148,10 @@ function RootLayoutContent() {
 
 export default function RootLayout() {
   return (
-    <ThemeProvider>
-      <RootLayoutContent />
-    </ThemeProvider>
+    <AuthProvider>
+      <ThemeProvider>
+        <RootLayoutContent />
+      </ThemeProvider>
+    </AuthProvider>
   );
 }

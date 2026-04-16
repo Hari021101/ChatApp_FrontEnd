@@ -1,5 +1,4 @@
 import { API_URL } from "../config/api";
-import { auth } from "../config/firebase";
 
 export interface UserProfile {
   id?: string;
@@ -9,8 +8,7 @@ export interface UserProfile {
 }
 
 class AuthService {
-  private async getAuthHeaders() {
-    const token = await auth.currentUser?.getIdToken();
+  private getAuthHeaders(token?: string | null) {
     return {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -18,34 +16,48 @@ class AuthService {
   }
 
   /**
-   * Register a new user in the C# Backend
+   * Log in via C# Backend
    */
-  public async register(userData: UserProfile) {
-    try {
-      const response = await fetch(`${API_URL}/Users`, {
-        method: "POST",
-        headers: await this.getAuthHeaders(),
-        body: JSON.stringify(userData),
-      });
+  public async login(credentials: { email: string; password: string }) {
+    const response = await fetch(`${API_URL}/Auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(credentials),
+    });
 
-      if (!response.ok) {
-        throw new Error(`Registration failed: ${response.statusText}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error("AuthService Register Error:", error);
-      throw error;
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || "Login failed");
     }
+
+    return await response.json();
   }
 
   /**
-   * Fetch all users from the C# Backend
+   * Register via C# Backend
    */
-  public async getUsers() {
+  public async registerNew(userData: any) {
+    const response = await fetch(`${API_URL}/Auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(userData),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || "Registration failed");
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Fetch all users
+   */
+  public async getUsers(token: string) {
     try {
       const response = await fetch(`${API_URL}/Users`, {
-        headers: await this.getAuthHeaders(),
+        headers: this.getAuthHeaders(token),
       });
       if (!response.ok) throw new Error("Failed to fetch users");
       return await response.json();
@@ -54,13 +66,14 @@ class AuthService {
       throw error;
     }
   }
+
   /**
-   * Search for users by name or email
+   * Search for users
    */
-  public async searchUsers(query: string) {
+  public async searchUsers(query: string, token: string) {
     try {
       const response = await fetch(`${API_URL}/Users/search?query=${encodeURIComponent(query)}`, {
-        headers: await this.getAuthHeaders(),
+        headers: this.getAuthHeaders(token),
       });
       if (!response.ok) throw new Error("Search failed");
       return await response.json();

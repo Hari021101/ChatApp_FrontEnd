@@ -1,12 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import {
     GoogleAuthProvider,
-    createUserWithEmailAndPassword,
-    getRedirectResult,
-    signInWithEmailAndPassword,
     signInWithRedirect,
-    updateProfile,
 } from "@firebase/auth";
+import { useAuth } from "../context/AuthContext";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -111,6 +108,7 @@ const InputField = ({
 };
 
 export default function LoginScreen() {
+  const { signIn } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -189,24 +187,12 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const response = await authService.login({ email, password });
+      await signIn(response.user, response.token);
       router.replace("/(tabs)");
     } catch (error: any) {
-      let message = "An error occurred during login.";
-      if (
-        error.code === "auth/user-not-found" ||
-        error.code === "auth/wrong-password" ||
-        error.code === "auth/invalid-login-credentials"
-      )
-        message = "Invalid email or password. Please check your credentials.";
-      else if (error.code === "auth/invalid-email")
-        message = "The email address is invalid.";
-      else if (error.code === "auth/too-many-requests")
-        message = "Too many failed attempts. Please try again later.";
-      else message = `Error: ${error.code || error.message}`;
-
-      Alert.alert("Login Failed", message);
-      console.error("Login Error:", error.code, error.message);
+      Alert.alert("Login Failed", error.message || "An error occurred during login.");
+      console.error("Login Error:", error);
     } finally {
       setLoading(false);
     }
@@ -219,40 +205,20 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password,
-      );
-      await updateProfile(userCredential.user, { displayName: name });
+      const response = await authService.registerNew({ 
+        email, 
+        password, 
+        displayName: name 
+      });
       
-      // Register in C# Backend
-      try {
-        await authService.register({
-          id: userCredential.user.uid,
-          email: userCredential.user.email || email,
-          displayName: name,
-        });
-        console.log("Registered in C# Backend! 🏗️");
-      } catch (backendError) {
-        console.warn("Failed to register in C# backend, but Firebase succeeded:", backendError);
-      }
-
+      // Auto-login after signup
+      await signIn(response.user, response.token); 
+      
       Alert.alert("Success", "Account created successfully!");
       router.replace("/(tabs)");
     } catch (error: any) {
-      let message = "An error occurred during signup.";
-      if (error.code === "auth/email-already-in-use")
-        message = "This email is already registered.";
-      if (error.code === "auth/weak-password")
-        message = "The password must be at least 6 characters.";
-      if (error.code === "auth/invalid-email")
-        message = "The email address is invalid.";
-      if (error.code === "auth/operation-not-allowed")
-        message =
-          "SIGN-IN METHOD DISABLED: You MUST go to your Firebase Console -> Authentication -> Sign-in method -> Click 'Email/Password' and ENABLE it.";
-      Alert.alert("Signup Failed", message);
-      console.error("Firebase Auth Error:", error.code, error.message);
+      Alert.alert("Signup Failed", error.message || "An error occurred during signup.");
+      console.error("Auth Error:", error);
     } finally {
       setLoading(false);
     }
