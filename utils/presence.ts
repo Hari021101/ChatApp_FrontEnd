@@ -1,50 +1,49 @@
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
-import { AppState, AppStateStatus } from "react-native";
-import { db } from "../config/firebase";
+import { API_URL } from "../config/api";
+import { UserProfile } from "../services/authService";
 
-export const updatePresence = async (uid: string, isOnline: boolean) => {
-  if (!uid) return;
+/**
+ * Update presence via C# backend → PUT /api/Users/{id}/presence
+ */
+export const updatePresence = async (
+  userId: string,
+  isOnline: boolean,
+  token: string
+) => {
+  if (!userId || !token) return;
   try {
-    const userRef = doc(db, "users", uid);
-    await setDoc(
-      userRef,
-      {
-        isOnline,
-        lastSeen: serverTimestamp(),
+    await fetch(`${API_URL}/Users/${userId}/presence`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
-      { merge: true },
-    );
-  } catch (error: any) {
-    if (error.code === "permission-denied") {
-      // Don't flood console with permission errors. One is enough.
-      console.warn("Presence update failed: Permission denied. Please check Firestore rules.");
-    } else {
-      console.error("Error updating presence:", error);
-    }
+      body: JSON.stringify({ isOnline }),
+    });
+  } catch (error) {
+    console.error("Error updating presence:", error);
   }
 };
 
-export const setupPresenceListener = (uid: string) => {
-  if (!uid) return;
+/**
+ * Listen to app foreground/background and sync presence to backend.
+ * Returns a cleanup function.
+ */
+export const setupPresenceListener = (user: UserProfile, token: string) => {
+  if (!user?.id || !token) return;
 
-  // Initial update
-  updatePresence(uid, true);
+  const { AppState, AppStateStatus } = require("react-native");
 
-  const handleAppStateChange = (nextAppState: AppStateStatus) => {
-    if (nextAppState === "active") {
-      updatePresence(uid, true);
-    } else {
-      updatePresence(uid, false);
-    }
+  // Mark online on start
+  updatePresence(user.id, true, token);
+
+  const handleAppStateChange = (nextAppState: string) => {
+    updatePresence(user.id, nextAppState === "active", token);
   };
 
-  const subscription = AppState.addEventListener(
-    "change",
-    handleAppStateChange,
-  );
+  const subscription = AppState.addEventListener("change", handleAppStateChange);
 
   return () => {
     subscription.remove();
-    updatePresence(uid, false);
+    updatePresence(user.id, false, token);
   };
 };

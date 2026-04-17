@@ -1,8 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import {
-    GoogleAuthProvider,
-    signInWithRedirect,
-} from "@firebase/auth";
 import { useAuth } from "../context/AuthContext";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -21,7 +17,6 @@ import {
     TextInput,
     View,
 } from "react-native";
-import { auth } from "../config/firebase";
 import { authService } from "../services/authService";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -149,18 +144,6 @@ export default function LoginScreen() {
       useNativeDriver: false,
     }).start();
 
-    // Handle Google Redirect Result on Web
-    if (Platform.OS === "web") {
-      getRedirectResult(auth)
-        .then((result) => {
-          if (result) {
-            router.replace("/(tabs)");
-          }
-        })
-        .catch((error) => {
-          console.error("Google Redirect Error:", error);
-        });
-    }
   }, []);
 
   const drift1X = aurora1.interpolate({
@@ -205,15 +188,12 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      const response = await authService.registerNew({ 
-        email, 
-        password, 
-        displayName: name 
+      const response = await authService.register({
+        email,
+        password,
+        displayName: name,
       });
-      
-      // Auto-login after signup
-      await signIn(response.user, response.token); 
-      
+      await signIn(response.user, response.token);
       Alert.alert("Success", "Account created successfully!");
       router.replace("/(tabs)");
     } catch (error: any) {
@@ -224,23 +204,8 @@ export default function LoginScreen() {
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    try {
-      const provider = new GoogleAuthProvider();
-      if (Platform.OS === "web") {
-        await signInWithRedirect(auth, provider);
-      } else {
-        Alert.alert(
-          "Notice",
-          "Google Sign-In on Native requires additional configuration. Please use Web for now.",
-        );
-      }
-    } catch (error: any) {
-      Alert.alert("Google Login Failed", error.message);
-    } finally {
-      setLoading(false);
-    }
+  const handleGoogleLogin = () => {
+    Alert.alert("Coming Soon", "Google Sign-In will be available soon!");
   };
 
   const isEmailValid = email.includes("@") && email.includes(".");
