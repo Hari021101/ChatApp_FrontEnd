@@ -1,11 +1,17 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
 
+// Matches the backend User model exactly
 interface User {
   id: string;
   email: string;
   displayName: string;
   photoURL?: string;
+  phoneNumber?: string;
+  bio?: string;
+  location?: string;
+  website?: string;
+  dateOfBirth?: string;
 }
 
 interface AuthContextType {
@@ -14,6 +20,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (userData: User, token: string) => Promise<void>;
   signOut: () => Promise<void>;
+  updateUser: (updatedFields: Partial<User>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -68,8 +75,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  /**
+   * Update specific fields of the logged-in user in both state and AsyncStorage.
+   * Call this after a successful PUT /api/users/profile request.
+   */
+  const updateUser = async (updatedFields: Partial<User>) => {
+    if (!user) return;
+    const updatedUser = { ...user, ...updatedFields };
+    try {
+      await AsyncStorage.setItem("auth_user", JSON.stringify(updatedUser));
+      setUser(updatedUser);
+    } catch (e) {
+      console.error("Failed to update user in storage:", e);
+      throw e;
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, token, loading, signIn, signOut, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -82,3 +105,4 @@ export const useAuth = () => {
   }
   return context;
 };
+

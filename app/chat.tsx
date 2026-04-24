@@ -2,17 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
 import { DrawerActions } from "@react-navigation/native";
-import {
-  collection,
-  doc,
-  getDoc,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  where,
-} from "firebase/firestore";
 import { HubConnectionState } from "@microsoft/signalr";
 import { useEffect, useState } from "react";
 import {
@@ -28,9 +17,9 @@ import {
   View,
 } from "react-native";
 import SearchUsers from "../components/SearchUsers";
-import { auth, db } from "../config/firebase";
 import { Colors } from "../constants/theme";
-import { ThemeProvider, useAppTheme } from "../context/ThemeContext";
+import { useAppTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 import { chatHub } from "../services/hub";
 import { API_URL } from "../config/api";
 
@@ -50,63 +39,11 @@ type Chat = {
 export default function ChatScreen() {
   const { theme } = useAppTheme();
   const isDark = theme === "dark";
-  const user = auth.currentUser;
+  const { user, token } = useAuth();
   const navigation = useNavigation();
 
   const toggleDrawer = () => {
     navigation.dispatch(DrawerActions.toggleDrawer());
-  };
-
-  const createDummyChats = async () => {
-    if (!user) return;
-    try {
-      const dummy1Id = "dummy_user_1_" + Date.now();
-      await setDoc(doc(db, "users", dummy1Id), {
-        displayName: "Alice Smith",
-        email: "alice@example.com",
-        photoURL: "https://i.pravatar.cc/150?u=alice",
-      });
-
-      const chat1Ref = doc(collection(db, "chats"));
-      await setDoc(chat1Ref, {
-        participants: [user.uid, dummy1Id],
-        participantNames: {
-          [dummy1Id]: "Alice Smith",
-          [user.uid]: user.displayName || "You",
-        },
-        lastMessage: "Hey, are we still on for tomorrow?",
-        updatedAt: serverTimestamp(),
-        createdAt: serverTimestamp(),
-        unreadCounts: { [user.uid]: 2, [dummy1Id]: 0 },
-        type: "direct",
-      });
-
-      const dummy2Id = "dummy_user_2_" + Date.now();
-      await setDoc(doc(db, "users", dummy2Id), {
-        displayName: "Bob Jones",
-        email: "bob@example.com",
-        photoURL: "https://i.pravatar.cc/150?u=bob",
-      });
-
-      const chat2Ref = doc(collection(db, "chats"));
-      await setDoc(chat2Ref, {
-        participants: [user.uid, dummy2Id],
-        participantNames: {
-          [dummy2Id]: "Bob Jones",
-          [user.uid]: user.displayName || "You",
-        },
-        lastMessage: "Sent an attachment",
-        updatedAt: serverTimestamp(),
-        createdAt: serverTimestamp(),
-        unreadCounts: { [user.uid]: 0, [dummy2Id]: 0 },
-        type: "direct",
-      });
-
-      alert("Successfully injected 2 dummy chats! 🚀");
-    } catch (e: any) {
-      console.error(e);
-      alert("Error generating chats: " + e.message);
-    }
   };
 
   const [chats, setChats] = useState<Chat[]>([]);
@@ -129,19 +66,18 @@ export default function ChatScreen() {
   const [isConnected, setIsConnected] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !token) return;
 
     const fetchChats = async () => {
       try {
-        const token = await user.getIdToken();
-        const response = await fetch(`${API_URL}/Chats/user/${user.uid}`, {
+        const response = await fetch(`${API_URL}/Chats/user/${user.id}`, {
           headers: { "Authorization": `Bearer ${token}` }
         });
-        
+
         if (response.ok) {
           const data = await response.json();
           const mappedChats: Chat[] = data.map((c: any) => {
-            const otherParticipant = c.participants.find((p: any) => p.userId !== user.uid);
+            const otherParticipant = c.participants.find((p: any) => p.userId !== user.id);
             return {
               id: c.id,
               name: c.isGroup ? c.title : (otherParticipant?.displayName || "Chat"),
@@ -158,7 +94,7 @@ export default function ChatScreen() {
           setChats(mappedChats);
         }
       } catch (error) {
-        console.error("Error fetching chats from SQL:", error);
+        console.error("Error fetching chats:", error);
       } finally {
         setLoading(false);
       }
@@ -166,8 +102,19 @@ export default function ChatScreen() {
 
     fetchChats();
 
+    // Listen for real-time new messages to bump unread count in the list
+    chatHub.onReceiveMessage((chatId: string, senderId: string) => {
+      if (senderId !== user.id) {
+        setChats(prev => prev.map(chat =>
+          chat.id === chatId
+            ? { ...chat, unread: chat.unread + 1 }
+            : chat
+        ));
+      }
+    });
+
     // Listen for real-time presence updates
-    chatHub.onPresenceUpdate((userId: string, isOnline: boolean, lastSeen: string) => {
+    chatHub.onPresenceUpdate((userId: string, isOnline: boolean) => {
       setChats(prev => prev.map(chat => {
         if (!chat.isGroup && chat.participants.includes(userId)) {
           return { ...chat, online: isOnline };
@@ -176,10 +123,10 @@ export default function ChatScreen() {
       }));
     });
 
-    // Refresh every 30 seconds or when user changes
+    // Refresh every 30 seconds
     const interval = setInterval(fetchChats, 30000);
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user, token]);
 
   const filteredChats = chats.filter((chat) =>
     chat.name.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -285,7 +232,7 @@ export default function ChatScreen() {
           <View style={styles.headerRight}>
             <TouchableOpacity
               style={styles.addChatBtn}
-              onPress={createDummyChats}
+              onPress={() => fetchChats()}
             >
               <Text style={styles.addChatIcon}>🐛</Text>
             </TouchableOpacity>
@@ -360,7 +307,7 @@ export default function ChatScreen() {
             `/conversation/${chatId}?name=${encodeURIComponent(otherUserName)}`,
           );
         }}
-        currentUserId={user?.uid || ""}
+        currentUserId={user?.id || ""}
         currentUserName={user?.displayName || "User"}
         isDark={isDark}
       />

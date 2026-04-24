@@ -354,11 +354,25 @@ export default function LoginScreen() {
               </Pressable>
 
               <View style={styles.socialStrip}>
-                <Pressable style={styles.socialBtn} onPress={handleGoogleLogin}>
-                  <CustomIcon name="logo-google" size={28} color="#fff" />
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.socialBtn,
+                    pressed && { transform: [{ scale: 0.95 }], backgroundColor: "rgba(255,255,255,0.2)" },
+                  ]}
+                  onPress={handleGoogleLogin}
+                >
+                  <CustomIcon name="logo-google" size={24} color="#fff" />
+                  <Text style={styles.socialBtnText}>GOOGLE</Text>
                 </Pressable>
-                <Pressable style={styles.socialBtn}>
-                  <CustomIcon name="logo-apple" size={28} color="#fff" />
+                
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.socialBtn,
+                    pressed && { transform: [{ scale: 0.95 }], backgroundColor: "rgba(255,255,255,0.2)" },
+                  ]}
+                >
+                  <CustomIcon name="logo-apple" size={24} color="#fff" />
+                  <Text style={styles.socialBtnText}>APPLE</Text>
                 </Pressable>
               </View>
             </View>
@@ -499,14 +513,25 @@ const styles = StyleSheet.create({
   },
   socialStrip: {
     flexDirection: "row",
-    gap: 32,
+    gap: 16,
+    width: "100%",
   },
   socialBtn: {
-    width: 70,
-    height: 70,
+    flex: 1,
+    height: SCREEN_WIDTH > 500 ? 70 : 60,
     borderRadius: 35,
+    flexDirection: "row",
     backgroundColor: "rgba(255,255,255,0.1)",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    gap: 10,
+  },
+  socialBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 2,
   },
 });

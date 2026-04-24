@@ -3,18 +3,6 @@ import { Audio } from "expo-av";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
-import {
-    addDoc,
-    collection,
-    doc,
-    getDoc,
-    increment,
-    onSnapshot,
-    orderBy,
-    query,
-    serverTimestamp,
-    updateDoc,
-} from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
@@ -31,9 +19,9 @@ import {
     View,
 } from "react-native";
 import * as WebBrowser from "expo-web-browser";
-import { auth, db } from "../../config/firebase";
 import { Colors } from "../../constants/theme";
 import { useAppTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
 import { startRecording, stopRecording } from "../../utils/audio";
 import { uploadFile } from "../../utils/storage";
 import { chatHub } from "../../services/hub";
@@ -65,7 +53,7 @@ type Message = {
 export default function ConversationScreen() {
   const { theme } = useAppTheme();
   const isDark = theme === "dark";
-  const user = auth.currentUser;
+  const { user, token } = useAuth();
   const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -92,63 +80,13 @@ export default function ConversationScreen() {
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id || !user) return;
+    if (!id || !user || !token) return;
 
-    let unsubscribeUser: () => void = () => {};
-
-    // 1. Get other participant ID and typing status from chat doc
-    const chatRef = doc(db, "chats", id);
-    const unsubscribeChat = onSnapshot(chatRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        const groupStatus = data.isGroup || false;
-        setIsGroup(groupStatus);
-        setParticipantCount(data.participants?.length || 0);
-
-        const otherId = groupStatus
-          ? null
-          : data.participants.find((p: string) => p !== user.uid);
-        setOtherUserId(otherId);
-        otherUserIdRef.current = otherId;
-
-        // Show typing indicator if other user is typing
-        if (otherId && data.typing) {
-          setOtherUserTyping(data.typing[otherId] || false);
-        }
-
-        // Reset our unread count if it's > 0
-        if (data.unreadCounts?.[user.uid] > 0) {
-          try {
-            updateDoc(chatRef, {
-              [`unreadCounts.${user.uid}`]: 0,
-            });
-          } catch (e) {
-            console.error("Silent error: Could not reset unread count", e);
-          }
-        }
-
-        if (otherId) {
-          // 2. Listen to other user's presence status
-          const userRef = doc(db, "users", otherId);
-          unsubscribeUser = onSnapshot(userRef, (userSnap) => {
-            if (userSnap.exists()) {
-              const userData = userSnap.data();
-              setOtherUserStatus({
-                isOnline: userData.isOnline || false,
-                lastSeen: userData.lastSeen,
-              });
-            }
-          });
-        }
-      }
-    });
-
-    // 3. Listen to messages via SignalR
+    // Load message history from SQL backend
     const loadHistory = async () => {
       try {
-        const token = await user.getIdToken();
         const response = await fetch(`${API_URL}/Chats/${id}/messages`, {
-           headers: { "Authorization": `Bearer ${token}` }
+          headers: { "Authorization": `Bearer ${token}` }
         });
         if (response.ok) {
           const history = await response.json();
@@ -157,7 +95,7 @@ export default function ConversationScreen() {
             text: m.content,
             senderId: m.senderId,
             timestamp: new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            isMine: m.senderId === user.uid,
+            isMine: m.senderId === user.id,
             type: m.messageType || "text",
             mediaUrl: m.content.startsWith("http") ? m.content : null,
             read: m.isRead || false,
@@ -165,7 +103,7 @@ export default function ConversationScreen() {
           setMessages(mapped);
 
           // Mark as read when opening historical messages
-          if (history.some((m: any) => !m.isRead && m.senderId !== user.uid)) {
+          if (history.some((m: any) => !m.isRead && m.senderId !== user.id)) {
             chatHub.markAsRead(id);
           }
         }
@@ -192,14 +130,14 @@ export default function ConversationScreen() {
             mediaUrl: type !== "text" ? content : undefined,
             senderId,
             timestamp: new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            isMine: senderId === user.uid,
+            isMine: senderId === user.id,
             type: type as any,
             read: isRead,
           },
         ]);
 
-        // If we receiver a message while in this chat, mark it as read immediately
-        if (senderId !== user.uid) {
+        // If we receive a message while in this chat, mark it as read immediately
+        if (senderId !== user.id) {
            chatHub.markAsRead(id);
         }
       }
@@ -207,32 +145,30 @@ export default function ConversationScreen() {
 
     // Subscribe to read receipts
     chatHub.onMessagesRead((chatId, readerId, readAt) => {
-      if (chatId === id && readerId !== user.uid) {
-        setMessages((prev) => 
+      if (chatId === id && readerId !== user.id) {
+        setMessages((prev) =>
           prev.map((msg) => (msg.isMine && !msg.read ? { ...msg, read: true } : msg))
         );
       }
     });
 
-    // Presence subscription
+    // Presence subscription — shows Online/Last seen in the header
     chatHub.onPresenceUpdate((userId: string, isOnline: boolean, lastSeen: string) => {
        if (userId === otherUserIdRef.current) {
          setOtherUserStatus({
            isOnline,
-           lastSeen: { toDate: () => new Date(lastSeen) } // Mapping to match formatLastSeen expectation
+           lastSeen: { toDate: () => new Date(lastSeen) }
          });
        }
     });
 
     return () => {
-      unsubscribeChat();
-      unsubscribeUser();
       if (typingTimeout) clearTimeout(typingTimeout);
       if (sound) {
         sound.unloadAsync();
       }
     };
-  }, [id, user, sound]);
+  }, [id, user, token, sound]);
 
   const formatLastSeen = (timestamp: any) => {
     if (!timestamp) return "Offline";
@@ -249,7 +185,6 @@ export default function ConversationScreen() {
   const handlePickMedia = async (type: "video" | "document") => {
     if (!user || !id) return;
     setShowAttachmentMenu(false);
-    // Force close any other state that might block interaction
     setIsRecording(false);
 
     try {
@@ -287,8 +222,7 @@ export default function ConversationScreen() {
       const downloadURL = await uploadFile(uri, uploadPath);
 
       if (downloadURL && user) {
-        // Send via SignalR (Hub will save to SQL)
-        await chatHub.sendMessage(id, user.uid, downloadURL, type === "video" ? "video" : "file");
+        await chatHub.sendMessage(id, user.id, downloadURL, type === "video" ? "video" : "file");
       }
       setLoading(false);
     } catch (error) {
@@ -309,8 +243,7 @@ export default function ConversationScreen() {
         try {
           const downloadURL = await uploadFile(uri);
           if (downloadURL && user) {
-            // Send via SignalR
-            await chatHub.sendMessage(id, user.uid, downloadURL, "audio");
+            await chatHub.sendMessage(id, user.id, downloadURL, "audio");
           }
         } catch (error) {
           console.error("Error sending voice note:", error);
@@ -351,8 +284,7 @@ export default function ConversationScreen() {
         const downloadURL = await uploadFile(uri, uploadPath);
 
         if (downloadURL) {
-          // Send via SignalR
-          await chatHub.sendMessage(id, user.uid, downloadURL, "image");
+          await chatHub.sendMessage(id, user.id, downloadURL, "image");
         }
         setLoading(false);
       }
@@ -364,40 +296,22 @@ export default function ConversationScreen() {
 
   const handleTyping = async (text: string) => {
     setNewMessage(text);
-    if (!id || !user) return;
-
-    // Clear existing timeout
-    if (typingTimeout) clearTimeout(typingTimeout);
-
-    // Set typing to true
-    const chatRef = doc(db, "chats", id);
-    await updateDoc(chatRef, {
-      [`typing.${user.uid}`]: true,
-    });
-
-    // Set timeout to clear typing status
-    const timeout = setTimeout(async () => {
-      await updateDoc(chatRef, {
-        [`typing.${user.uid}`]: false,
-      });
-    }, 3000);
-
-    setTypingTimeout(timeout);
+    // TODO: Implement typing indicator via SignalR hub method in a future step
   };
 
   const handleSend = async () => {
     if (newMessage && newMessage.trim() && user && id) {
       const text = newMessage.trim();
-      setNewMessage(""); 
+      setNewMessage("");
 
       try {
         if (editingMessage) {
-           // TODO: Implement Edit via SignalR or API
+           // TODO: Implement Edit via API in a future step
            console.log("Edit not implemented in SQL yet");
            setEditingMessage(null);
         } else {
-          // Send via SignalR (Hub will save to SQL)
-          await chatHub.sendMessage(id, user.uid, text, "text");
+          // Send via SignalR (Hub saves to SQL)
+          await chatHub.sendMessage(id, user.id, text, "text");
         }
       } catch (error) {
         console.error("Error sending message:", error);
@@ -406,17 +320,9 @@ export default function ConversationScreen() {
   };
 
   const handleReaction = async (messageId: string, emoji: string) => {
-    if (!user || !id) return;
-    const msgRef = doc(db, "chats", id, "messages", messageId);
-    try {
-      await updateDoc(msgRef, {
-        [`reactions.${user.uid}`]: emoji,
-      });
-      setShowActionMenu(false);
-      setSelectedMessage(null);
-    } catch (error) {
-      console.error("Error adding reaction:", error);
-    }
+    // TODO: Implement reactions via SQL API in a future step
+    setShowActionMenu(false);
+    setSelectedMessage(null);
   };
 
   const handleLongPress = (message: Message) => {

@@ -5,13 +5,29 @@ class ChatHubService {
   private connection: HubConnection | null = null;
 
   /**
-   * Initialize and start the SignalR connection
+   * Initialize and start the SignalR connection.
+   * @param token - The JWT bearer token from AuthContext.
    */
-  public async startConnection() {
-    if (this.connection) return;
+  public async startConnection(token: string) {
+    // If already connected with the same token, do nothing
+    if (
+      this.connection &&
+      this.connection.state !== HubConnectionState.Disconnected
+    ) {
+      return;
+    }
+
+    // If there's an old disconnected connection, clean it up first
+    if (this.connection) {
+      await this.connection.stop();
+      this.connection = null;
+    }
 
     this.connection = new HubConnectionBuilder()
-      .withUrl(HUB_URL)
+      .withUrl(HUB_URL, {
+        // This factory is called automatically on every connect/reconnect
+        accessTokenFactory: () => token,
+      })
       .withAutomaticReconnect()
       .build();
 
@@ -20,7 +36,6 @@ class ChatHubService {
       console.log("SignalR Connected! 🚀");
     } catch (err) {
       console.error("SignalR Connection Error: ", err);
-      // Retry logic could go here
     }
   }
 

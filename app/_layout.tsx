@@ -74,9 +74,11 @@ function RootLayoutContent() {
 
   // ── SignalR Connection ─────────────────────────────────────────────────
   useEffect(() => {
-    chatHub.startConnection();
+    if (token) {
+      chatHub.startConnection(token);
+    }
     return () => chatHub.stopConnection();
-  }, []);
+  }, [token]);
 
   // ── Auth Guard ─────────────────────────────────────────────────────────
   const segments = useSegments();
